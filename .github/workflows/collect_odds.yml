@@ -9,13 +9,20 @@ permissions:
   contents: write
 concurrency: { group: collect, cancel-in-progress: false }
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs: { months: "${{ steps.p.outputs.months }}" }
+    steps:
+      - id: p
+        run: echo "months=$(python3 -c 'import json,sys; print(json.dumps([m.strip() for m in sys.argv[1].split(",") if m.strip()]))' '${{ inputs.months }}')" >> "$GITHUB_OUTPUT"
   odds:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 340
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix: { month: "${{ fromJson(format('[\"{0}\"]', join(split(inputs.months, ','), '\",\"'))) }}" }
+      matrix: { month: "${{ fromJson(needs.plan.outputs.months) }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
