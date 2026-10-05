@@ -1,10 +1,12 @@
 """締切時3連単オッズ(boatrace.jp odds3t)を月単位で取得する。
-usage: python scripts/fetch_odds.py YYYYMM STOREDIR [--workers 4] [--budget-min 320]
+usage: python scripts/fetch_odds.py YYYYMM STOREDIR [--workers 4] [--budget-min 320] [--stride 3]
+--stride N: N日に1日だけ取る（日付の通し番号 % N == 0 の日）。GitHub Actions からは1リクエスト約9秒かかるため
+（サーバ側で遅延される）、件数を絞るのに使う。
 レース一覧は STOREDIR/bk の競走成績(K)から作る。
 保存先: STOREDIR/odds/YYYYMM.csv.gz  (date,jcd,rno,<120通りのオッズ 1-2-3..6-5-4>)
 途中まで取れているファイルがあれば続きから取る（時間切れでも途中結果を保存する）。
 """
-import argparse, csv, glob, gzip, os, sys, threading, time, urllib.request
+import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -30,12 +32,15 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--interval", type=float, default=1.0)
     ap.add_argument("--budget-min", type=float, default=320)
+    ap.add_argument("--stride", type=int, default=1)
     a = ap.parse_args()
     t0 = time.monotonic()
 
     keys = []
     for p in sorted(glob.glob(f"{a.store}/bk/{a.month[:4]}/k{a.month[2:]}*.txt.gz")):
         date = "20" + os.path.basename(p)[1:7]
+        if dt.date(int(date[:4]), int(date[4:6]), int(date[6:])).toordinal() % a.stride:
+            continue
         for jcd, rno in race_keys_k(gzip.open(p, "rt", encoding="utf-8").read()):
             keys.append((date, jcd, rno))
     out = f"{a.store}/odds/{a.month}.csv.gz"
@@ -77,21 +82,30 @@ def main():
             stop.set()
         return k, None
 
+    def save():
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        tmp = out + ".tmp"
+        with gzip.open(tmp, "wt", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["date", "jcd", "rno"] + COMBOS)
+            for k in sorted(done):
+                w.writerow(done[k])
+        os.replace(tmp, out)
+    # キャンセル(SIGTERM/SIGINT)時も取れた分は残す
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+
     got = 0
     with ThreadPoolExecutor(a.workers) as ex:
         for k, row in ex.map(job, todo):
             if row:
                 done[k] = row; got += 1
-            if got and got % 500 == 0:
+            if row and got % 200 == 0:
                 print(f"  {got}/{len(todo)} {(time.monotonic()-t0)/60:.1f}min", flush=True)
+                save()
             if (time.monotonic() - t0) / 60 > a.budget_min:
                 stop.set()
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    with gzip.open(out, "wt", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["date", "jcd", "rno"] + COMBOS)
-        for k in sorted(done):
-            w.writerow(done[k])
+    save()
     print(f"{a.month}: saved={len(done)}/{len(keys)} errors={errors[0]} {(time.monotonic()-t0)/60:.1f}min")
 
 if __name__ == "__main__":
