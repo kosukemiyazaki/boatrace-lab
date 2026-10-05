@@ -1,0 +1,80 @@
+name: collect
+# 公式B/Kファイルと締切時3連単オッズを集め、data ブランチにコミットする
+on:
+  workflow_dispatch:
+    inputs:
+      start: { description: "開始日 YYYY-MM-DD", default: "2023-10-01" }
+      end: { description: "終了日 YYYY-MM-DD", default: "2026-10-04" }
+      skip_bk: { description: "B/K取得を省略", type: boolean, default: false }
+permissions:
+  contents: write
+concurrency: { group: collect, cancel-in-progress: false }
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      chunks: ${{ steps.p.outputs.chunks }}
+      months: ${{ steps.p.outputs.months }}
+    steps:
+      - id: p
+        shell: python
+        run: |
+          import datetime as dt, json, os
+          s = dt.date.fromisoformat("${{ inputs.start }}"); e = dt.date.fromisoformat("${{ inputs.end }}")
+          n = 4; span = (e - s).days + 1
+          cuts = [s + dt.timedelta(days=span * i // n) for i in range(n + 1)]
+          chunks = [{"s": str(cuts[i]), "e": str(cuts[i + 1] - dt.timedelta(days=1))} for i in range(n)]
+          chunks[-1]["e"] = str(e)
+          months = []
+          d = s.replace(day=1)
+          while d <= e:
+              months.append(f"{d:%Y%m}"); d = (d + dt.timedelta(days=32)).replace(day=1)
+          months.reverse()  # 新しい月から（バックテスト期間を先に揃える）
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"chunks={json.dumps(chunks)}\nmonths={json.dumps(months)}\n")
+      - uses: actions/checkout@v4
+      - name: ensure data branch
+        run: |
+          if ! git ls-remote --exit-code --heads origin data; then
+            git checkout --orphan data && git rm -rqf . && git clean -fdxq
+            echo "収集データ（collect ワークフローが更新）" > README.md
+            git config user.name github-actions; git config user.email github-actions@users.noreply.github.com
+            git add README.md && git commit -qm "init data branch" && git push origin data
+          fi
+
+  bk:
+    needs: plan
+    if: ${{ !inputs.skip_bk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: { chunk: "${{ fromJson(needs.plan.outputs.chunks) }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - run: python3 scripts/fetch_bk.py ${{ matrix.chunk.s }} ${{ matrix.chunk.e }} store
+      - name: push
+        if: always()
+        run: bash scripts/push_store.sh "bk ${{ matrix.chunk.s }}..${{ matrix.chunk.e }}"
+
+  odds:
+    needs: [plan, bk]
+    if: ${{ always() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: { month: "${{ fromJson(needs.plan.outputs.months) }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: python3 scripts/fetch_odds.py ${{ matrix.month }} store --workers 4 --interval 1.0 --budget-min 300
+      - name: push
+        if: always()
+        run: bash scripts/push_store.sh "odds ${{ matrix.month }}"
