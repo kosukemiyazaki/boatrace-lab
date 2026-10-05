@@ -36,6 +36,7 @@ CAP = 1000
 BANKROLL = 100_000  # Kelly 計算用の想定資金
 MIN_SEL_RACES = int(os.environ.get("MIN_SEL_RACES", 500))
 RNG = np.random.default_rng(0)
+RUN_TEST = os.environ.get("RUN_TEST", "0") == "1"  # テスト期間は明示したときだけ評価する
 
 def load(datadir):
     e = pd.read_parquet(f"{datadir}/entries.parquet")
@@ -135,9 +136,9 @@ def main(datadir, outdir):
         iso_t.fit(t0[S["cal"]].ravel(), yt[S["cal"]].ravel())
         P = iso_t.predict(t0.ravel()).reshape(n, 120)
 
-        te = S["test"]
-        mres = {
-            "win_logloss": {k: float(-np.log(np.clip(p1[S[k], win[S[k]]], 1e-12, None)).mean()) for k in ("cal", "sel", "test")},
+        te = S["test"] if RUN_TEST else S["sel"]
+        mres = {"evaluated_on": "test" if RUN_TEST else "sel (テスト未実施)",
+            "win_logloss": {k: float(-np.log(np.clip(p1[S[k], win[S[k]]], 1e-12, None)).mean()) for k in ("cal", "sel") + (("test",) if RUN_TEST else ())},
             "win_logloss_uniform": float(np.log(6)),
             "win_top1_acc_test": float((p1[te].argmax(1) == win[te]).mean()),
             "tri_logloss_test": float(-np.log(np.clip(P[te, y[te]] / P[te].sum(1), 1e-12, None)).mean()),
@@ -145,22 +146,24 @@ def main(datadir, outdir):
             "calibration_win_test": reliability(p1[te][mask[te]], yw[te][mask[te]]),
             "calibration_tri_test": reliability(P[te].ravel(), yt[te].ravel(), bins=[0, .005, .01, .02, .04, .07, .1, .15, .25, 1]),
         }
-        # 3) 戦略選択（選択期間のみ）
+        # 3) 戦略選択（選択期間のみ）。高配当頼みの偶然の当たりを選ばないよう、
+        #    回収率そのものではなく「日単位ブートストラップの下側5%点」が最大の設定を選ぶ
         grid = [dict(thr=t, pmin=pm, maxpts=mp, sizing=sz) for t in (1.0, 1.1, 1.2, 1.3, 1.5, 2.0)
                 for pm in (0.0, 0.005, 0.01, 0.02, 0.04) for mp in (1, 3, 10) for sz in ("flat", "kelly")]
         sel_rows = []
         for g in grid:
             b = bets(P, O, O, S["sel"], **g)
-            sm = settle(b, y, pay, ref_combo, d, O, nd["sel"])
+            sm = settle(b, y, pay, ref_combo, d, O, nd["sel"], boot=True, nboot=2000)
             if sm["races_bet"] >= MIN_SEL_RACES:
-                sel_rows.append({**g, **{k: sm[k] for k in ("races_bet", "roi", "pnl")}})
-        sel_rows.sort(key=lambda v: -v["roi"])
+                sel_rows.append({**g, **{k: sm[k] for k in ("races_bet", "hits", "roi", "roi_q05", "pnl", "mean_odds_bought")}})
+        sel_rows.sort(key=lambda v: -v["roi_q05"])
         best = {k: sel_rows[0][k] for k in ("thr", "pmin", "maxpts", "sizing")} if sel_rows else None
         mres["selection_top5"] = sel_rows[:5]
         mres["chosen_strategy"] = best
         if best:
-            sm_sel = settle(bets(P, O, O, S["sel"], **best), y, pay, ref_combo, d, O, nd["sel"], boot=True)
+            sm_sel = settle(bets(P, O, O, S["sel"], **best), y, pay, ref_combo, d, O, nd["sel"], boot=True, calib=P)
             mres["selection_period"] = sm_sel
+        if best and RUN_TEST:
             # 4) テスト（ここで初めて触る）
             bt = bets(P, O, O, te, **best)
             mres["test"] = settle(bt, y, pay, ref_combo, d, O, nd["test"], boot=True, calib=P)
@@ -208,7 +211,7 @@ def bets(P, Odec, Opay, sel, thr, pmin, maxpts, sizing):
                 out.append((i, int(c), float(yy)))
     return out
 
-def settle(b, y, pay, ref_combo, d, O, ndays, boot=False, calib=None):
+def settle(b, y, pay, ref_combo, d, O, ndays, boot=False, calib=None, nboot=5000):
     if not b:
         return {"races_bet": 0}
     b = np.array(b)
@@ -236,14 +239,19 @@ def settle(b, y, pay, ref_combo, d, O, ndays, boot=False, calib=None):
         max_drawdown=int(dd),
     )
     if calib is not None:
+        # 買い目に限った校正: モデルの予測的中数 / 市場(締切オッズ逆数を正規化)の予測的中数 / 実際
         pr = calib[ri, ci]
+        inv = 1 / O[ri]
+        mk = inv[np.arange(len(ri)), ci] / np.nansum(inv, axis=1)
+        out["expected_hits_model"] = float(pr.sum()); out["expected_hits_market"] = float(mk.sum())
         out["mean_pred_prob"] = float(pr.mean()); out["actual_hit_rate"] = float(hit.mean())
     if boot:
         # 日単位のブートストラップで回収率の95%信頼区間
         st, rt = per_day["stake"].values, per_day["ret"].values
         k = len(st)
-        idx = RNG.integers(0, k, size=(5000, k))
+        idx = RNG.integers(0, k, size=(nboot, k))
         rois = rt[idx].sum(1) / st[idx].sum(1)
+        out["roi_q05"] = float(np.quantile(rois, 0.05))
         out["roi_ci95"] = [float(np.quantile(rois, 0.025)), float(np.quantile(rois, 0.975))]
         out["p_roi_ge_1"] = float((rois >= 1).mean())
     return out
