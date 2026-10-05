@@ -18,7 +18,7 @@ def softmax_rows(s, mask):
 def trifecta(p, g2=1.0, g3=1.0):
     """p: (n,6) 1着確率（欠場は0）-> (n,120)"""
     def norm_pow(g):
-        q = np.where(p > 0, p, 0) ** g
+        q = np.where(p > 0, p, 0) ** max(g, 0.05)
         return q / q.sum(axis=1, keepdims=True)
     q2, q3 = norm_pow(g2), norm_pow(g3)
     a = p[:, PI]

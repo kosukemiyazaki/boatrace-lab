@@ -1,6 +1,7 @@
 """特徴量。レース前に分かる情報だけを使う。
 - 番組表: 級別・勝率・2連率・当地・モーター・ボート・年齢・体重
-- 展示タイム（直前情報。締切前に公表される）、風・波
+- 展示タイム（直前情報。締切前に公表される）
+  ※ 風・波はKファイルの値がレース時点のものなので使わない
 - 選手の過去成績（当該レースより前のレースのみ）: 直近30走の平均着順/勝率/3連対率/平均ST、
   当該艇番コースでの過去の1着率・3連対率、直近のF回数
 """
@@ -49,12 +50,11 @@ BASE_WIN = {1: 0.55, 2: 0.14, 3: 0.12, 4: 0.11, 5: 0.06, 6: 0.02}
 BASE_TOP3 = {1: 0.85, 2: 0.60, 3: 0.55, 4: 0.50, 5: 0.35, 6: 0.20}
 
 FEATS = ["boat", "jcd_i", "cls_i", "age", "weight", "nat_win", "nat_2r", "loc_win", "loc_2r",
-         "motor_2r", "boat_2r", "exh_time", "wind", "wave", "dist",
+         "motor_2r", "boat_2r", "exh_time", "dist",
          "h_fin30", "h_win30", "h_top230", "h_top330", "h_st30", "h_f60", "h_n", "hl_win", "hl_top3", "hl_n",
          "r_nat_win", "r_exh", "r_exh_rank", "r_motor", "r_hst", "r_hfin", "r_cls"]
 
-def race_features(e, races):
-    e = e.merge(races[["date", "jcd", "rno", "wind", "wave"]], on=["date", "jcd", "rno"], how="left")
+def race_features(e):
     e["jcd_i"] = e["jcd"].astype(int)
     e["cls_i"] = e["cls"].map(CLS)
     e["loc_win"] = e["loc_win"].where(e["loc_win"] > 0)
