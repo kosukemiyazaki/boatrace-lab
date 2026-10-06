@@ -1,0 +1,35 @@
+name: live
+# レース当日、締切6分前のオッズ（3連単・単勝複勝）と直前情報を取得して data ブランチの live/ に保存する。
+# GitHub Actions のジョブは最長6時間なので、朝・昼・夜の3本に分ける（cron は UTC、遅れて起動することがある）。
+on:
+  schedule:
+    - cron: "35 22 * * *"   # 07:35 JST 〜 13:15
+    - cron: "5 4 * * *"     # 13:05 JST 〜 18:45
+    - cron: "35 9 * * *"    # 18:35 JST 〜 21:45
+  workflow_dispatch:
+    inputs:
+      until: { description: "終了時刻 HH:MM (JST)", default: "21:45" }
+permissions:
+  contents: write
+concurrency: { group: "live-${{ github.event.schedule || 'manual' }}", cancel-in-progress: false }
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - name: until
+        id: u
+        run: |
+          case "${{ github.event.schedule }}" in
+            "35 22 * * *") echo "until=13:15" >> "$GITHUB_OUTPUT" ;;
+            "5 4 * * *")   echo "until=18:45" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "until=${{ inputs.until || '21:45' }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }} --lead 6
+      - name: push
+        if: always()
+        run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
