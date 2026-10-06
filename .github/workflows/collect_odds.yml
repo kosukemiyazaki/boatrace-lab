@@ -6,9 +6,10 @@ on:
       months: { description: "YYYYMM をカンマ区切り（先頭から順に処理）", required: true }
       stride: { description: "N日に1日だけ取る", default: "1" }
       pages: { description: "odds3t / oddstf / beforeinfo をカンマ区切り", default: "odds3t" }
+      parallel: { description: "同時に動かすジョブ数", default: "2" }
 permissions:
   contents: write
-concurrency: { group: "collect-${{ inputs.pages }}", cancel-in-progress: false }
+concurrency: { group: "collect-${{ inputs.pages }}-${{ inputs.months }}", cancel-in-progress: false }
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -28,7 +29,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: ${{ fromJson(inputs.parallel || '2') }}
       matrix: { job: "${{ fromJson(needs.plan.outputs.jobs) }}" }
     steps:
       - uses: actions/checkout@v4
