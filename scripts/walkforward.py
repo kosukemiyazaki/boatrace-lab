@@ -107,7 +107,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     r, X, mask, refund, pos, O = load(a.datadir)
     d = r["date"].to_numpy(dtype=object).astype(str); ym = np.array([x[:6] for x in d])
-    assert d.max() < TEST_START
+    assert max(d) < TEST_START
     y = r["tri_combo"].map({c: i for i, c in enumerate(COMBOS)}).values
     pay = r["tri_pay"].values.astype(float)
     ref_combo = np.zeros((len(r), 120), bool)
@@ -147,7 +147,7 @@ def main():
     summary = dict(
         n_combinations_tried=len(GRID), fixed_rule=f"EV上位から最大{MAXPTS}点・各{YEN}円、1レース上限{CAP}円",
         variant_B="モデル×市場（6分前オッズ）: 過去に6分前オッズがないため評価不能",
-        eval_period=[str(d[evall].min()), str(d[evall].max())], eval_races=int(evall.sum()), eval_days=ndays,
+        eval_period=[str(min(d[evall])), str(max(d[evall]))], eval_races=int(evall.sum()), eval_days=ndays,
         quarters=log,
     )
     json.dump(dict(summary=summary, results=results), open(f"{a.out}/walkforward.json", "w"), ensure_ascii=False, indent=1)
