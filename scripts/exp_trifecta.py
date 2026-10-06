@@ -54,7 +54,7 @@ def stage_model(X, mask, pos, stage, tr, es, feats):
     dtr = lgb.Dataset(xtr, ytr, feature_name=feats, categorical_feature=["jcd_i"])
     bst = lgb.train(PARAMS, dtr, 3000, valid_sets=[lgb.Dataset(xes, yes, reference=dtr)],
                     callbacks=[lgb.early_stopping(100, verbose=False)])
-    return bst.predict(X.reshape(-1, len(feats)), raw_score=True).reshape(n, 6), bst.best_iteration
+    return bst.predict(X.reshape(-1, len(feats)), raw_score=True).reshape(n, 6), bst.best_iteration, bst
 
 def stage_trifecta(s1, s2, s3, mask):
     n = len(s1)
@@ -87,15 +87,15 @@ def main(datadir, *variants):
     warm = (pd.Timestamp(str(min(d))) + pd.DateOffset(months=2)).strftime("%Y%m%d")
     tr = (d >= warm) & (d <= TR); es = (d > TR) & (d <= ES); ca = (d > ES) & (d <= CA); ev = (d > CA) & (d <= EV)
     print("races", tr.sum(), es.sum(), ca.sum(), ev.sum(), flush=True)
-    s1, it1 = stage_model(X, mask, pos, 0, tr, es, FE)
+    s1, it1, _ = stage_model(X, mask, pos, 0, tr, es, FE)
     res = []
     if "harville" in variants:
         p1 = softmax_rows(s1, mask)
         (g2, g3), _ = fit_gamma(p1[ca], y[ca])
         res.append(evaluate(trifecta(p1, g2, g3), y, ca, ev, f"harville(g={g2:.2f},{g3:.2f})"))
     if "stage" in variants:
-        s2, it2 = stage_model(X, mask, pos, 1, tr, es, FE)
-        s3, it3 = stage_model(X, mask, pos, 2, tr, es, FE)
+        s2, it2, _ = stage_model(X, mask, pos, 1, tr, es, FE)
+        s3, it3, _ = stage_model(X, mask, pos, 2, tr, es, FE)
         res.append(evaluate(stage_trifecta(s1, s2, s3, mask), y, ca, ev, f"stage{'-v2' if FE is FEATS2 else ''}(it={it1},{it2},{it3})"))
     return res
 
