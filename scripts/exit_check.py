@@ -1,5 +1,7 @@
 """撤退判定（PREREGISTRATION.md の判定1）。設定はコミット済みのものから変えない。
-usage: python scripts/exit_check.py DATADIR STOREDIR [--model models/frozen_v1] [--n 2000] [--out results/exit_check.md]
+usage: python scripts/exit_check.py DATADIR STOREDIR [--model models/frozen_v2] [--n 2000] [--out results/exit_check.md]
+モデルの特徴量の版は models/<版>/meta.json の feats_name で決まる（bi = 直前情報入り）。
+bi の版では、対象レースの直前情報に live で締切前に取得したもの（live/beforeinfo）を使い、ないレースは対象から外す。
 
 - 対象: live で締切前に取得した6分前の3連単オッズがあり、締切時オッズと着順もそろうレース。
   日付・締切時刻の順に並べ、先頭から n レース（既定 2,000）。足りなければ「判定前」と出して終わる。
@@ -15,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__)); sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.features import FEATS, history_features, race_features
+from boatlib.features import FEATS, FEATS_BI, add_beforeinfo, history_features, race_features
 from boatlib.model import blend, fit_blend
 from boatlib.parse import COMBOS
 from exp_trifecta import stage_trifecta
@@ -29,13 +31,20 @@ def market(O):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("datadir"); ap.add_argument("store")
-    ap.add_argument("--model", default="models/frozen_v1"); ap.add_argument("--n", type=int, default=2000)
+    ap.add_argument("--model", default="models/frozen_v2"); ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--out", default="results/exit_check.md")
     a = ap.parse_args()
     key = ["date", "jcd", "rno"]
     live = pd.concat([pd.read_csv(f, dtype={"date": str, "jcd": str}) for f in sorted(glob.glob(f"{a.store}/live/odds3t/*.csv.gz"))])
     live["jcd"] = live["jcd"].str.zfill(2)
     live = live[live["fetched_at"] < live["deadline"] + ":00"].drop_duplicates(key, keep="last")  # 締切前の取得のみ
+    meta = json.load(open(f"{a.model}/meta.json"))
+    F = FEATS_BI if meta.get("feats_name") == "bi" else FEATS
+    if F is FEATS_BI:
+        lbi = pd.concat([pd.read_csv(f, dtype={"date": str, "jcd": str}) for f in sorted(glob.glob(f"{a.store}/live/beforeinfo/*.csv.gz"))])
+        lbi["jcd"] = lbi["jcd"].str.zfill(2)
+        lbi = lbi[(lbi["fetched_at"] < lbi["deadline"] + ":00") & lbi["exh1"].notna()].drop_duplicates(key, keep="last")
+        live = live.merge(lbi[key], on=key)  # 締切前の直前情報があるレースだけ
     close = pd.read_parquet(f"{a.datadir}/odds.parquet").assign(date=lambda x: x["date"].astype(str), jcd=lambda x: x["jcd"].astype(str).str.zfill(2))
     races = pd.read_parquet(f"{a.datadir}/races.parquet")
     r = races[key + ["tri_combo"]].drop_duplicates(key)
@@ -53,13 +62,19 @@ def main():
     r, L, C = r.iloc[:a.n].reset_index(drop=True), L[:a.n], C[:a.n]
     # 凍結モデルで予測
     e = race_features(history_features(pd.read_parquet(f"{a.datadir}/entries.parquet")))
+    if F is FEATS_BI:
+        # 過去レースはデータセットの直前情報、対象レースは live で締切前に取得した直前情報
+        hb = pd.read_parquet(f"{a.datadir}/beforeinfo.parquet").assign(date=lambda x: x["date"].astype(str), jcd=lambda x: x["jcd"].astype(str).str.zfill(2))
+        hb = hb.merge(r[key], on=key, how="left", indicator=True)
+        hb = hb[hb["_merge"] == "left_only"].drop(columns="_merge")
+        e = add_beforeinfo(e, pd.concat([hb, lbi.drop(columns=["deadline", "fetched_at"])], ignore_index=True))
     e["absent"] = e["pos_raw"].isin(["K0", "K1"])
     r["ri"] = np.arange(len(r))
     m = e.merge(r[key + ["ri"]], on=key)
-    X = np.full((len(r), 6, len(FEATS)), np.nan); mask = np.zeros((len(r), 6), bool)
-    X[m["ri"].values, m["boat"].values - 1] = m[FEATS].values.astype(float)
+    X = np.full((len(r), 6, len(F)), np.nan); mask = np.zeros((len(r), 6), bool)
+    X[m["ri"].values, m["boat"].values - 1] = m[F].values.astype(float)
     mask[m["ri"].values, m["boat"].values - 1] = ~m["absent"].values
-    s = [lgb.Booster(model_file=f"{a.model}/stage{k}.txt").predict(X.reshape(-1, len(FEATS)), raw_score=True).reshape(-1, 6) for k in (1, 2, 3)]
+    s = [lgb.Booster(model_file=f"{a.model}/stage{k}.txt").predict(X.reshape(-1, len(F)), raw_score=True).reshape(-1, 6) for k in (1, 2, 3)]
     T = stage_trifecta(*s, mask)
     iso = json.load(open(f"{a.model}/isotonic.json"))
     P = np.interp(T.ravel(), iso["x"], iso["y"]).reshape(T.shape); P /= P.sum(1, keepdims=True)

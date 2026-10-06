@@ -22,7 +22,7 @@ from sklearn.isotonic import IsotonicRegression
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
-from boatlib.features import FEATS, history_features, race_features
+from boatlib.features import FEATS, FEATS_BI, add_beforeinfo, history_features, race_features
 from boatlib.parse import COMBOS
 from exp_trifecta import stage_model, stage_trifecta
 
@@ -32,7 +32,8 @@ GRID = [dict(omax=om, thr=t) for om in (30, 50, 100) for t in (1.1, 1.2, 1.3)]
 MAXPTS, YEN, CAP = 10, 100, 1000
 RNG = np.random.default_rng(0)
 
-def load(datadir):
+def load(datadir, feats=FEATS):
+    """feats=FEATS_BI のときは直前情報（beforeinfo.parquet）を加える。既定（FEATS）の動作は Step 2 のまま"""
     e = pd.read_parquet(f"{datadir}/entries.parquet")
     e = e[e["date"] < TEST_START]
     races = pd.read_parquet(f"{datadir}/races.parquet")
@@ -41,6 +42,9 @@ def load(datadir):
     odds = odds.assign(date=odds["date"].astype(str), jcd=odds["jcd"].astype(str).str.zfill(2))
     odds = odds[odds["date"] < TEST_START]
     e = race_features(history_features(e))
+    if feats is FEATS_BI:
+        bi = pd.read_parquet(f"{datadir}/beforeinfo.parquet").assign(date=lambda x: x["date"].astype(str))
+        e = add_beforeinfo(e, bi[bi["date"] < TEST_START])
     e["absent"] = e["pos_raw"].isin(["K0", "K1"])
     e["refund"] = e["pos_raw"].astype(str).str.match(r"^(F|L|K)")
     key = ["date", "jcd", "rno"]
@@ -49,9 +53,9 @@ def load(datadir):
     r["ri"] = np.arange(len(r))
     m = e.merge(r[key + ["ri"]], on=key)
     n = len(r)
-    X = np.full((n, 6, len(FEATS)), np.nan); mask = np.zeros((n, 6), bool); refund = np.zeros((n, 6), bool)
+    X = np.full((n, 6, len(feats)), np.nan); mask = np.zeros((n, 6), bool); refund = np.zeros((n, 6), bool)
     bi = m["boat"].values - 1
-    X[m["ri"].values, bi] = m[FEATS].values.astype(float)
+    X[m["ri"].values, bi] = m[feats].values.astype(float)
     mask[m["ri"].values, bi] = ~m["absent"].values
     refund[m["ri"].values, bi] = m["refund"].values
     pos = np.array([[int(c[0]) - 1, int(c[2]) - 1, int(c[4]) - 1] for c in r["tri_combo"].values])

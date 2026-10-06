@@ -42,5 +42,11 @@ def main(store, out):
         o.to_parquet(f"{out}/odds.parquet")
         print("odds races", len(o), "with table", int(o.iloc[:, 3:].notna().any(axis=1).sum()))
 
+    bfs = sorted(glob.glob(f"{store}/beforeinfo/*.csv.gz"))
+    if bfs:
+        b = pd.concat([pd.read_csv(p, dtype={"date": str, "jcd": str}) for p in bfs], ignore_index=True)
+        b.to_parquet(f"{out}/beforeinfo.parquet")
+        print("beforeinfo races", len(b))
+
 if __name__ == "__main__":
     main(*sys.argv[1:3])

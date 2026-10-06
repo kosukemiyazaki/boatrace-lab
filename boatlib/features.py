@@ -114,3 +114,45 @@ def extra_features(e):
 FEATS2 = FEATS + ["m_fin30", "m_top2_30", "d_exh_self", "hl_st",
                   "in_r_nat_win", "in_h_st30", "in_r_exh", "in_cls_i", "out_r_nat_win", "out_h_st30",
                   "b1_r_nat_win", "b1_h_st30", "b1_r_exh", "b1_hl_win", "d_st_in"]
+
+# ---------------- 直前情報（beforeinfo）の特徴量 ----------------
+BI_BOAT_COLS = ["weight", "exh", "tilt", "prop_new", "parts", "adj", "ex_course", "ex_st", "ex_f"]
+BI_RACE_COLS = ["air", "weather", "wind", "wind_dir", "water", "wave"]
+
+def beforeinfo_long(bi):
+    """直前情報（1行=1レースの横持ち）を 1行=1艇 に変換"""
+    key = ["date", "jcd", "rno"]
+    parts = []
+    for b in range(1, 7):
+        t = bi[key + BI_RACE_COLS + [f"{c}{b}" for c in BI_BOAT_COLS]].copy()
+        t.columns = key + [f"bi_{c}" for c in BI_RACE_COLS] + [f"bi_{c}" for c in BI_BOAT_COLS]
+        t["boat"] = b
+        parts.append(t)
+    out = pd.concat(parts, ignore_index=True)
+    out["date"] = out["date"].astype(str); out["jcd"] = out["jcd"].astype(str).str.zfill(2); out["rno"] = out["rno"].astype(int)
+    return out
+
+def add_beforeinfo(e, bi):
+    """e: race_features 済みの出走表。bi: 直前情報（横持ち）。
+    展示タイムは場・風の影響を受けにくいよう、レース内の相対値（r_exh, r_exh_rank: 既存）と
+    選手の普段との差（d_exh_self = r_exh − その選手の直近10走の r_exh 平均）で使う。
+    直前情報がないレース（2025-09以前）は欠損のまま（LightGBM は欠損を扱える）。"""
+    key = ["date", "jcd", "rno"]
+    e = e.merge(beforeinfo_long(bi), on=key + ["boat"], how="left")
+    # 直前情報の展示タイムがあり、成績ファイル側がない場合は直前情報の値を使う（同じ値）
+    if "exh_time" in e:
+        e["exh_time"] = e["exh_time"].fillna(e["bi_exh"])
+    g = e.groupby(key)
+    e["r_exh"] = e["exh_time"] - g["exh_time"].transform("mean")
+    e["r_exh_rank"] = g["exh_time"].rank(method="min")
+    e["t"] = e["date"].astype(int) * 100 + e["rno"]
+    e = e.sort_values(["toban", "t"]).reset_index(drop=True)
+    e["h_rexh10"] = e.groupby("toban", sort=False)["r_exh"].transform(lambda s: s.shift(1).rolling(10, min_periods=3).mean())
+    e["d_exh_self"] = e["r_exh"] - e["h_rexh10"]
+    e["d_course"] = e["bi_ex_course"] - e["boat"]
+    e["r_ex_st"] = e["bi_ex_st"] - e.groupby(key)["bi_ex_st"].transform("mean")
+    return e
+
+FEATS_BI = FEATS + ["d_exh_self", "bi_ex_course", "d_course", "bi_ex_st", "r_ex_st", "bi_ex_f",
+                    "bi_tilt", "bi_prop_new", "bi_parts", "bi_adj",
+                    "bi_wind", "bi_wind_dir", "bi_wave", "bi_air", "bi_water", "bi_weather"]
