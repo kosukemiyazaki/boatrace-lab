@@ -1,0 +1,37 @@
+name: daily
+# 毎朝（日本時間 6:13）直近3日分の番組表(B)・競走成績(K)と締切時3連単オッズを data ブランチに追加する。
+# 既に取得済みの日・レースはスキップするので、取りこぼしがあっても翌日以降に埋まる。
+# 2026-10-05 以降のデータは前向きテスト（最終評価）用で、開発には使わない。
+on:
+  schedule:
+    - cron: "13 21 * * *"
+  workflow_dispatch:
+    inputs:
+      days: { description: "何日前までさかのぼるか", default: "3" }
+permissions:
+  contents: write
+concurrency: { group: daily, cancel-in-progress: false }
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - name: dates
+        id: d
+        run: |
+          N=${{ inputs.days || '3' }}
+          echo "start=$(TZ=Asia/Tokyo date -d "-${N} day" +%F)" >> "$GITHUB_OUTPUT"
+          echo "end=$(TZ=Asia/Tokyo date -d '-1 day' +%F)" >> "$GITHUB_OUTPUT"
+      - run: python3 scripts/fetch_bk.py ${{ steps.d.outputs.start }} ${{ steps.d.outputs.end }} store
+      - name: odds
+        run: |
+          for m in $(python3 -c "import sys;print(' '.join(sorted({sys.argv[1][:7].replace('-',''), sys.argv[2][:7].replace('-','')})))" ${{ steps.d.outputs.start }} ${{ steps.d.outputs.end }}); do
+            python3 scripts/fetch_odds.py $m store --workers 4 --interval 1.0 --budget-min 90
+          done
+      - name: push
+        if: always()
+        run: bash scripts/push_store.sh "daily ${{ steps.d.outputs.end }}"
