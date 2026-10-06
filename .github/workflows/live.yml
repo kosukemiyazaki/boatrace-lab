@@ -1,5 +1,5 @@
 name: live
-# レース当日、締切6分前のオッズ（3連単・単勝複勝）と直前情報を取得して data ブランチの live/ に保存する。
+# レース当日、締切15分前・10分前・6分前のオッズ（3連単・単勝複勝）と6分前の直前情報を取得して data ブランチに保存する。
 # GitHub Actions のジョブは最長6時間なので、朝・昼・夜の3本に分ける（cron は UTC、遅れて起動することがある）。
 on:
   schedule:
@@ -29,7 +29,7 @@ jobs:
             "5 4 * * *")   echo "until=18:45" >> "$GITHUB_OUTPUT" ;;
             *)             echo "until=${{ inputs.until || '23:05' }}" >> "$GITHUB_OUTPUT" ;;
           esac
-      - run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }} --lead 6
+      - run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }}
       - name: push
         if: always()
         run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
