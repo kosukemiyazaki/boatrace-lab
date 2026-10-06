@@ -5,10 +5,10 @@ on:
   schedule:
     - cron: "35 22 * * *"   # 07:35 JST 〜 13:15
     - cron: "5 4 * * *"     # 13:05 JST 〜 18:45
-    - cron: "35 9 * * *"    # 18:35 JST 〜 21:45
+    - cron: "35 9 * * *"    # 18:35 JST 〜 23:05（ミッドナイト開催あり）
   workflow_dispatch:
     inputs:
-      until: { description: "終了時刻 HH:MM (JST)", default: "21:45" }
+      until: { description: "終了時刻 HH:MM (JST)", default: "23:05" }
 permissions:
   contents: write
 concurrency: { group: "live-${{ github.event.schedule || 'manual' }}", cancel-in-progress: false }
@@ -27,7 +27,7 @@ jobs:
           case "${{ github.event.schedule }}" in
             "35 22 * * *") echo "until=13:15" >> "$GITHUB_OUTPUT" ;;
             "5 4 * * *")   echo "until=18:45" >> "$GITHUB_OUTPUT" ;;
-            *)             echo "until=${{ inputs.until || '21:45' }}" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "until=${{ inputs.until || '23:05' }}" >> "$GITHUB_OUTPUT" ;;
           esac
       - run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }} --lead 6
       - name: push
