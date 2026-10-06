@@ -3,3 +3,4 @@ pyarrow
 numpy
 scipy
 lightgbm
+tabulate
