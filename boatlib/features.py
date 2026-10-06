@@ -70,3 +70,47 @@ def race_features(e):
     e["r_hfin"] = rel("h_fin30")
     e["r_cls"] = rel("cls_i")
     return e
+
+# ---------------- 拡張特徴量（v2） ----------------
+def extra_features(e):
+    """v2: モーターの直近成績、自分の普段の展示との差、コース別ST、内外の艇・1号艇の強さ。
+    すべて当該レースより前の情報か、締切前に公表される情報（出走表・展示）だけを使う。"""
+    e = e.copy()
+    if "t" not in e:
+        e["t"] = e["date"].astype(int) * 100 + e["rno"]
+    started = ~e["pos_raw"].isin(["K0", "K1"])
+    fin = e["pos"].where(e["pos"].notna(), 6.0).where(started)
+    # モーター（場×モーター番号）の直近30走
+    e = e.sort_values(["jcd", "motor_no", "t"]).reset_index(drop=True)
+    fin = e["pos"].where(e["pos"].notna(), 6.0).where(~e["pos_raw"].isin(["K0", "K1"]))
+    e["_mfin"] = fin
+    e["_mtop2"] = (e["pos"] <= 2).astype(float).where(fin.notna())
+    gm = e.groupby(["jcd", "motor_no"], sort=False)
+    e["m_fin30"] = gm["_mfin"].transform(lambda s: s.shift(1).rolling(30, min_periods=5).mean())
+    e["m_top2_30"] = gm["_mtop2"].transform(lambda s: s.shift(1).rolling(30, min_periods=5).mean())
+    # 選手の普段の展示（レース内偏差）との差、コース別平均ST
+    e = e.sort_values(["toban", "t"]).reset_index(drop=True)
+    gr = e.groupby("toban", sort=False)
+    e["h_rexh10"] = gr["r_exh"].transform(lambda s: s.shift(1).rolling(10, min_periods=3).mean())
+    e["d_exh_self"] = e["r_exh"] - e["h_rexh10"]
+    e["_lane"] = e["course"].fillna(e["boat"])
+    lane = e[["toban", "_lane", "t", "st"]].rename(columns={"_lane": "boat_lane"}).sort_values("t")
+    lane["cst"] = lane.groupby(["toban", "boat_lane"])["st"].transform(lambda s: s.rolling(20, min_periods=1).mean())
+    q = e[["toban", "boat", "t"]].assign(boat_lane=e["boat"].astype(float), _i=np.arange(len(e))).sort_values("t")
+    lane["boat_lane"] = lane["boat_lane"].astype(float)
+    mm = pd.merge_asof(q, lane[["toban", "boat_lane", "t", "cst"]], on="t", by=["toban", "boat_lane"],
+                       allow_exact_matches=False).sort_values("_i")
+    e["hl_st"] = mm["cst"].values
+    # 隣の艇・1号艇（同レース内、出走表と過去成績から）
+    key = ["date", "jcd", "rno"]
+    base = e[key + ["boat", "r_nat_win", "h_st30", "r_exh", "cls_i", "hl_win"]]
+    inner = base.assign(boat=base["boat"] + 1).rename(columns={c: f"in_{c}" for c in ("r_nat_win", "h_st30", "r_exh", "cls_i", "hl_win")})
+    outer = base.assign(boat=base["boat"] - 1).rename(columns={c: f"out_{c}" for c in ("r_nat_win", "h_st30", "r_exh", "cls_i", "hl_win")})
+    b1 = base[base["boat"] == 1].drop(columns="boat").rename(columns={c: f"b1_{c}" for c in ("r_nat_win", "h_st30", "r_exh", "cls_i", "hl_win")})
+    e = e.merge(inner, on=key + ["boat"], how="left").merge(outer, on=key + ["boat"], how="left").merge(b1, on=key, how="left")
+    e["d_st_in"] = e["h_st30"] - e["in_h_st30"]
+    return e.drop(columns=[c for c in e.columns if c.startswith("_")])
+
+FEATS2 = FEATS + ["m_fin30", "m_top2_30", "d_exh_self", "hl_st",
+                  "in_r_nat_win", "in_h_st30", "in_r_exh", "in_cls_i", "out_r_nat_win", "out_h_st30",
+                  "b1_r_nat_win", "b1_h_st30", "b1_r_exh", "b1_hl_win", "d_st_in"]

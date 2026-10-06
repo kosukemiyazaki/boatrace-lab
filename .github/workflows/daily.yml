@@ -1,5 +1,5 @@
 name: daily
-# 毎朝（日本時間 6:13）直近3日分の番組表(B)・競走成績(K)と締切時3連単オッズを data ブランチに追加する。
+# 毎朝（日本時間 6:13）直近3日分の番組表(B)・競走成績(K)、締切時の3連単・単勝複勝オッズ、直前情報を data ブランチに追加する。
 # 既に取得済みの日・レースはスキップするので、取りこぼしがあっても翌日以降に埋まる。
 # 2026-10-05 以降のデータは前向きテスト（最終評価）用で、開発には使わない。
 on:
@@ -14,7 +14,7 @@ concurrency: { group: daily, cancel-in-progress: false }
 jobs:
   daily:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -30,7 +30,9 @@ jobs:
       - name: odds
         run: |
           for m in $(python3 -c "import sys;print(' '.join(sorted({sys.argv[1][:7].replace('-',''), sys.argv[2][:7].replace('-','')})))" ${{ steps.d.outputs.start }} ${{ steps.d.outputs.end }}); do
-            python3 scripts/fetch_odds.py $m store --workers 4 --interval 1.0 --budget-min 90
+            for p in odds3t oddstf beforeinfo; do
+              python3 scripts/fetch_odds.py $m store --page $p --workers 4 --interval 1.0 --budget-min 40
+            done
           done
       - name: push
         if: always()

@@ -1,4 +1,6 @@
-"""締切時3連単オッズ(boatrace.jp odds3t)を月単位で取得する。
+"""boatrace.jp のレース別ページを月単位で取得する（既定は締切時3連単オッズ odds3t）。
+--page oddstf     : 締切時 単勝・複勝オッズ   -> STOREDIR/oddstf/YYYYMM.csv.gz
+--page beforeinfo : 直前情報（展示・チルト・部品交換・スタート展示・水面気象） -> STOREDIR/beforeinfo/YYYYMM.csv.gz
 usage: python scripts/fetch_odds.py YYYYMM STOREDIR [--workers 4] [--budget-min 320] [--stride 3]
 --stride N: N日に1日だけ取る（日付の通し番号 % N == 0 の日）。GitHub Actions からは1リクエスト約9秒かかるため
 （サーバ側で遅延される）、件数を絞るのに使う。
@@ -10,10 +12,15 @@ import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, ti
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import COMBOS, parse_odds3t, race_keys_k
+from boatlib.parse import BI_COLS, COMBOS, ODDSTF_COLS, parse_beforeinfo, parse_odds3t, parse_oddstf, race_keys_k
 
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
-BASE = "https://www.boatrace.jp/owpc/pc/race/odds3t"
+BASE = "https://www.boatrace.jp/owpc/pc/race/"
+PAGES = {  # page -> (列名, パーサ)
+    "odds3t": (COMBOS, parse_odds3t),
+    "oddstf": (ODDSTF_COLS, parse_oddstf),
+    "beforeinfo": (BI_COLS, parse_beforeinfo),
+}
 
 class Pacer:
     """スレッドごとに最低 interval 秒あける"""
@@ -33,6 +40,7 @@ def main():
     ap.add_argument("--interval", type=float, default=1.0)
     ap.add_argument("--budget-min", type=float, default=320)
     ap.add_argument("--stride", type=int, default=1)
+    ap.add_argument("--page", default="odds3t", choices=list(PAGES))
     a = ap.parse_args()
     t0 = time.monotonic()
 
@@ -43,7 +51,8 @@ def main():
             continue
         for jcd, rno in race_keys_k(gzip.open(p, "rt", encoding="utf-8").read()):
             keys.append((date, jcd, rno))
-    out = f"{a.store}/odds/{a.month}.csv.gz"
+    cols, parser = PAGES[a.page]
+    out = f"{a.store}/{'odds' if a.page == 'odds3t' else a.page}/{a.month}.csv.gz"
     done = {}
     if os.path.exists(out):
         with gzip.open(out, "rt") as f:
@@ -51,7 +60,7 @@ def main():
                 if r[0] != "date":
                     done[(r[0], r[1], int(r[2]))] = r
     todo = [k for k in keys if k not in done]
-    print(f"{a.month}: races={len(keys)} done={len(done)} todo={len(todo)}", flush=True)
+    print(f"{a.page} {a.month}: races={len(keys)} done={len(done)} todo={len(todo)}", flush=True)
 
     pacer = Pacer(a.interval)
     stop = threading.Event()
@@ -64,12 +73,12 @@ def main():
         for i in range(4):
             pacer.wait()
             try:
-                req = urllib.request.Request(f"{BASE}?rno={rno}&jcd={jcd}&hd={date}", headers=UA)
+                req = urllib.request.Request(f"{BASE}{a.page}?rno={rno}&jcd={jcd}&hd={date}", headers=UA)
                 with urllib.request.urlopen(req, timeout=30) as r:
                     html = r.read().decode("utf-8", "replace")
-                o = parse_odds3t(html)
-                # 中止レースなどオッズ表がない場合は空行で記録
-                return k, [date, jcd, rno] + ([("" if o[c] is None else o[c]) for c in COMBOS] if o else [""] * 120)
+                o = parser(html)
+                # 中止レースなど表がない場合は空行で記録
+                return k, [date, jcd, rno] + ([("" if o[c] is None else o[c]) for c in cols] if o else [""] * len(cols))
             except urllib.error.HTTPError as e:
                 if e.code in (403, 429):
                     print("rate-limited", e.code, k, flush=True); time.sleep(60 * (i + 1))
@@ -87,7 +96,7 @@ def main():
         tmp = out + ".tmp"
         with gzip.open(tmp, "wt", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["date", "jcd", "rno"] + COMBOS)
+            w.writerow(["date", "jcd", "rno"] + cols)
             for k in sorted(done):
                 w.writerow(done[k])
         os.replace(tmp, out)

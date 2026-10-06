@@ -128,3 +128,59 @@ def parse_odds3t(html):
     if len(vals) != 120:
         return None
     return {k: _num(v.strip()) for k, v in zip(_ORDER, vals)}
+
+# ---------------- 単勝・複勝オッズ ----------------
+ODDSTF_COLS = [f"tan{b}" for b in range(1, 7)] + [f"fuku_lo{b}" for b in range(1, 7)] + [f"fuku_hi{b}" for b in range(1, 7)]
+
+def parse_oddstf(html):
+    vals = ODDS_CELL.findall(html)
+    if len(vals) != 12:
+        return None
+    tan = [_num(v.strip()) for v in vals[:6]]
+    lo, hi = [], []
+    for v in vals[6:]:
+        a = v.strip().split("-")
+        lo.append(_num(a[0]) if len(a) == 2 else None); hi.append(_num(a[1]) if len(a) == 2 else None)
+    return dict(zip(ODDSTF_COLS, tan + lo + hi))
+
+# ---------------- 直前情報 ----------------
+BI_BOAT = ["weight", "exh", "tilt", "prop_new", "parts", "adj", "ex_course", "ex_st", "ex_f"]
+BI_RACE = ["air", "weather", "wind", "wind_dir", "water", "wave"]
+BI_COLS = BI_RACE + [f"{c}{b}" for b in range(1, 7) for c in BI_BOAT]
+_TAG = re.compile(r"<[^>]+>")
+
+def parse_beforeinfo(html):
+    """直前情報: 艇ごとの体重・展示タイム・チルト・プロペラ新品・部品交換数・調整重量・展示進入・展示ST、水面気象"""
+    body = re.sub(r"\s+", " ", html)
+    tb = re.findall(r'<tbody class="is-fs12 ">(.*?)</tbody>', body)
+    if len(tb) != 6:
+        return None
+    out = {}
+    for t in tb:
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", t)
+        txt = [_TAG.sub("", x).replace("&nbsp;", "").strip() for x in tds]
+        b = _num(txt[0])
+        if b is None:
+            return None
+        b = int(b)
+        parts = re.findall(r"<li[^>]*>(.*?)</li>", re.search(r'<ul class="labelGroup1">(.*?)</ul>', t).group(1)) if "labelGroup1" in t else []
+        out[f"weight{b}"] = _num(txt[3].replace("kg", ""))
+        out[f"exh{b}"] = _num(txt[4]); out[f"tilt{b}"] = _num(txt[5])
+        out[f"prop_new{b}"] = 1.0 if "新" in txt[6] else 0.0
+        out[f"parts{b}"] = float(len(parts))
+        # 4行構成の3行目先頭が調整重量
+        m = re.search(r'<tr> <td rowspan="2">([^<]*)</td> <td>ST</td>', t)
+        out[f"adj{b}"] = _num(m.group(1)) if m else None
+    st = re.findall(r'table1_boatImage1Number is-type(\d)">\d</span>.*?table1_boatImage1Time[^>]*>([^<]*)</span>', body)
+    for course, (b, v) in enumerate(st, 1):
+        b = int(b); v = v.strip()
+        out[f"ex_course{b}"] = float(course)
+        out[f"ex_f{b}"] = 1.0 if v.startswith("F") else 0.0
+        out[f"ex_st{b}"] = _num(v.lstrip("FL") if v.lstrip("FL").startswith(".") else None) if v else None
+    def wv(title):
+        m = re.search(rf'LabelTitle">{title}</span> <span class="weather1_bodyUnitLabelData">([\d.\-]+)', body)
+        return _num(m.group(1)) if m else None
+    out["air"] = wv("気温"); out["wind"] = wv("風速"); out["water"] = wv("水温"); out["wave"] = wv("波高")
+    m = re.search(r'is-weather(\d+)"', body); out["weather"] = _num(m.group(1)) if m else None
+    m = re.search(r'is-wind(\d+)"', body); out["wind_dir"] = _num(m.group(1)) if m else None
+    return {c: out.get(c) for c in BI_COLS}

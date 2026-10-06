@@ -1,20 +1,27 @@
 name: collect-odds
-# 締切時3連単オッズを指定月だけ取得（B/K は data ブランチに取得済みの前提）
+# boatrace.jp のレース別ページ（既定: 締切時3連単オッズ）を指定月だけ取得（B/K は data ブランチに取得済みの前提）
 on:
   workflow_dispatch:
     inputs:
       months: { description: "YYYYMM をカンマ区切り（先頭から順に処理）", required: true }
-      stride: { description: "N日に1日だけ取る", default: "3" }
+      stride: { description: "N日に1日だけ取る", default: "1" }
+      pages: { description: "odds3t / oddstf / beforeinfo をカンマ区切り", default: "odds3t" }
 permissions:
   contents: write
-concurrency: { group: collect, cancel-in-progress: false }
+concurrency: { group: "collect-${{ inputs.pages }}", cancel-in-progress: false }
 jobs:
   plan:
     runs-on: ubuntu-latest
-    outputs: { months: "${{ steps.p.outputs.months }}" }
+    outputs: { jobs: "${{ steps.p.outputs.jobs }}" }
     steps:
       - id: p
-        run: echo "months=$(python3 -c 'import json,sys; print(json.dumps([m.strip() for m in sys.argv[1].split(",") if m.strip()]))' '${{ inputs.months }}')" >> "$GITHUB_OUTPUT"
+        shell: python
+        run: |
+          import json, os
+          ms = [m.strip() for m in "${{ inputs.months }}".split(",") if m.strip()]
+          ps = [p.strip() for p in "${{ inputs.pages || 'odds3t' }}".split(",") if p.strip()]
+          jobs = [{"month": m, "page": p} for m in ms for p in ps]  # 月ごとに全ページ → 新しい月から揃う
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"jobs={json.dumps(jobs)}\n")
   odds:
     needs: plan
     runs-on: ubuntu-latest
@@ -22,12 +29,12 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix: { month: "${{ fromJson(needs.plan.outputs.months) }}" }
+      matrix: { job: "${{ fromJson(needs.plan.outputs.jobs) }}" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with: { ref: data, path: store }
-      - run: python3 scripts/fetch_odds.py ${{ matrix.month }} store --workers 4 --interval 1.0 --budget-min 300 --stride ${{ inputs.stride }}
+      - run: python3 scripts/fetch_odds.py ${{ matrix.job.month }} store --page ${{ matrix.job.page }} --workers 4 --interval 1.0 --budget-min 300 --stride ${{ inputs.stride }}
       - name: push
         if: always()
-        run: bash scripts/push_store.sh "odds ${{ matrix.month }} stride ${{ inputs.stride }}"
+        run: bash scripts/push_store.sh "${{ matrix.job.page }} ${{ matrix.job.month }} stride ${{ inputs.stride }}"
