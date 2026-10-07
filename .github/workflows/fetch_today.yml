@@ -1,0 +1,21 @@
+name: fetch-today
+# 当日の番組表（B）を取得して probe-out ブランチに置く（単発の予想用）
+on: { workflow_dispatch: {} }
+permissions:
+  contents: write
+jobs:
+  b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: |
+          d=$(TZ=Asia/Tokyo date +%y%m%d); ym=$(TZ=Asia/Tokyo date +%Y%m)
+          mkdir out && cd out
+          curl -sS -A "Mozilla/5.0 (boatrace-lab research)" -o b.lzh "https://www1.mbrace.or.jp/od2/B/$ym/b$d.lzh"
+          python3 - <<'PY'
+          import struct, zlib
+          PY
+          sudo apt-get install -y -qq --no-install-recommends lhasa >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+          lha xq b.lzh && rm b.lzh && ls -la
+          git init -q -b probe-out && git config user.name github-actions && git config user.email github-actions@users.noreply.github.com
+          git add -A && git commit -qm "today B" && git push -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}" probe-out
