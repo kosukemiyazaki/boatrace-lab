@@ -46,6 +46,10 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.u.outputs.mode == 'run'
         with: { ref: data, path: store }
+      # Ubuntu 24.04 のシステム Python には pip で入れられない（externally-managed）ため、setup-python を使う
+      - uses: actions/setup-python@v5
+        if: steps.u.outputs.mode == 'run'
+        with: { python-version: "3.12" }
       - if: steps.u.outputs.mode == 'run'
         run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
       - name: prepare prediction in background
