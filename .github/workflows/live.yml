@@ -1,35 +1,64 @@
 name: live
 # レース当日、締切15分前・10分前・6分前のオッズ（3連単・単勝複勝）と6分前の直前情報を取得して data ブランチに保存する。
-# GitHub Actions のジョブは最長6時間なので、1本あたり最長5時間45分（23:05 JST まで）動かす。
+# GitHub の定期起動は数時間遅れたり起動しなかったりするので、ジョブの最後に次のジョブを自分で起動して途切れないようにする。
+#   07:00〜23:05 JST : 最長5時間45分取得して、次を起動
+#   それ以外の時間    : 翌朝07:30まで待つだけ（最長5時間40分）して、次を起動
+# 定期起動（1時間おき）は鎖が切れたときの予備。同時に動くのは1本だけ（concurrency）。
 on:
-  # GitHub の定期起動は数時間遅れることがあるので、1時間おきに起動する（07:35〜22:05 JST）。
-  # 同時に動くのは1本だけ（concurrency）。後から起動したものは前のジョブの終了を待って始まる。
   schedule:
     - cron: "35 22,23 * * *"
     - cron: "5 0-13 * * *"
   workflow_dispatch:
     inputs:
-      until: { description: "終了時刻 HH:MM (JST)。空なら 起動から5時間45分後 と 23:05 の早い方", default: "" }
+      until: { description: "終了時刻 HH:MM (JST)。空なら自動", default: "" }
 permissions:
   contents: write
+  actions: write
 concurrency: { group: live, cancel-in-progress: false }
 jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with: { ref: data, path: store }
-      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
-      - name: until
+      - id: start
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: mode
         id: u
+        shell: python
         run: |
-          if [ -n "${{ inputs.until }}" ]; then u="${{ inputs.until }}"; else
-            u=$(python3 -c "import datetime as d; j=d.timezone(d.timedelta(hours=9)); n=d.datetime.now(j); e=min(n+d.timedelta(minutes=345), n.replace(hour=23, minute=5)); print(e.strftime('%H:%M'))")
-          fi
-          echo "until=$u" >> "$GITHUB_OUTPUT"; echo "until=$u"
-      - run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }}
+          import datetime as d, os
+          j = d.timezone(d.timedelta(hours=9)); n = d.datetime.now(j)
+          start, end = n.replace(hour=7, minute=0, second=0), n.replace(hour=23, minute=5, second=0)
+          until = "${{ inputs.until }}"
+          out = open(os.environ["GITHUB_OUTPUT"], "a")
+          if until or start <= n < end:
+              u = until or min(n + d.timedelta(minutes=345), end).strftime("%H:%M")
+              out.write(f"mode=run\nuntil={u}\n"); print("run until", u)
+          else:
+              wake = n.replace(hour=7, minute=30, second=0)
+              if wake <= n:
+                  wake += d.timedelta(days=1)
+              s = int(min((wake - n).total_seconds(), 340 * 60))
+              out.write(f"mode=sleep\nsleep={s}\n"); print("sleep", s)
+      - uses: actions/checkout@v4
+        if: steps.u.outputs.mode == 'run'
+      - uses: actions/checkout@v4
+        if: steps.u.outputs.mode == 'run'
+        with: { ref: data, path: store }
+      - if: steps.u.outputs.mode == 'run'
+        run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - if: steps.u.outputs.mode == 'run'
+        run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }}
       - name: push
-        if: always()
+        if: always() && steps.u.outputs.mode == 'run'
         run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
+      - name: sleep until morning
+        if: steps.u.outputs.mode == 'sleep'
+        run: sleep ${{ steps.u.outputs.sleep }}
+      - name: start next job
+        if: always() && !cancelled()
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          # 失敗して数秒で終わるジョブが連鎖しないよう、開始から最低10分あけて次を起動する
+          el=$(( $(date +%s) - ${{ steps.start.outputs.t }} )); [ $el -lt 600 ] && sleep $(( 600 - el ))
+          gh workflow run live.yml --ref main -R "$GITHUB_REPOSITORY"
