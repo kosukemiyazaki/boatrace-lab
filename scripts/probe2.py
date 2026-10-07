@@ -8,6 +8,16 @@ OUT = "probe_out"; os.makedirs(OUT, exist_ok=True)
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 LOG = open(f"{OUT}/index.tsv", "w")
 
+def get_bin(url, name):
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+            b = r.read(); code = r.status
+    except Exception as e:
+        b = b""; code = repr(e)[:80]
+    open(f"{OUT}/{name}", "wb").write(b)
+    LOG.write(f"{name}\t{code}\t{len(b)}\t{url}\n"); LOG.flush(); print(name, code, len(b), url, flush=True)
+    time.sleep(1)
+
 def get(url, name):
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
@@ -25,32 +35,23 @@ def get(url, name):
     time.sleep(1)
     return t
 
-B = "https://www.boatrace.jp/owpc/pc/race/"
-for hd, j in (("20261004", "23"), ("20251004", "23"), ("20231004", "24")):
-    get(f"{B}pcexpect?rno=12&jcd={j}&hd={hd}", f"br_pcexpect_{j}_{hd}")
-    get(f"{B}pay?hd={hd}", f"br_pay_{hd}")
-
 K = "https://www.keiba.go.jp"
-top = get(f"{K}/KeibaWeb/TodayRaceInfo/TopTodayRaceInfo", "nar_top")
-links = sorted(set(re.findall(r'href="(/KeibaWeb/[^"]+)"', top)))
-open(f"{OUT}/nar_top_links.txt", "w").write("\n".join(links))
-for ym in ("2026/10", "2025/10", "2023/10"):
+get_bin(f"{K}/pdf/manual/data_pdf_manual.pdf", "nar_data_manual.pdf")
+for ym in ("2026/10", "2025/10", "2023/10", "2020/10"):
     y, m = ym.split("/")
+    dl = get(f"{K}/KeibaWeb/DataDownload/RaceDataDownload?type=monthly&k_year={y}&k_month={int(m)}", f"nar_download_{y}{m}")
+    open(f"{OUT}/nar_download_{y}{m}_links.txt", "w").write("\n".join(sorted(set(re.findall(r'(?:href|action)="([^"]+)"', dl)))))
     t = get(f"{K}/KeibaWeb/MonthlyConveneInfo/MonthlyConveneInfoTop?k_year={y}&k_month={int(m)}", f"nar_month_{y}{m}")
-    lk = sorted(set(re.findall(r'href="([^"]*RaceList[^"]*)"', t)))
-    open(f"{OUT}/nar_month_{y}{m}_links.txt", "w").write("\n".join(lk))
+    lk = sorted(set(l.replace("&amp;", "&") for l in re.findall(r'RaceList\?k_raceDate=[^"\' <>]+', t)))
     if not lk:
         continue
-    u = urllib.parse.urljoin(K + "/KeibaWeb/MonthlyConveneInfo/", lk[0].replace("&amp;", "&"))
-    rl = get(u, f"nar_racelist_{y}{m}")
-    rlinks = sorted(set(l.replace("&amp;", "&") for l in re.findall(r'href="([^"]*TodayRaceInfo/[^"]+)"', rl)))
+    rl = get(f"{K}/KeibaWeb/TodayRaceInfo/{lk[0]}", f"nar_racelist_{y}{m}")
+    rlinks = sorted(set(l.replace("&amp;", "&") for l in re.findall(r'(?:TodayRaceInfo/)?([A-Z][A-Za-z]+\?k_raceDate=[^"\' <>]+)', rl)))
     open(f"{OUT}/nar_racelist_{y}{m}_links.txt", "w").write("\n".join(rlinks))
     seen = set()
     for l in rlinks:
-        kind = re.search(r'TodayRaceInfo/([A-Za-z]+)', l).group(1)
-        if kind in seen or kind in ("RaceList", "TopTodayRaceInfo"):
+        kind = l.split("?")[0]
+        if kind in seen or kind == "RaceList":
             continue
         seen.add(kind)
-        get(urllib.parse.urljoin(K + "/KeibaWeb/TodayRaceInfo/", l), f"nar_{kind}_{y}{m}")
-        if len(seen) >= 8:
-            break
+        get(f"{K}/KeibaWeb/TodayRaceInfo/{l}", f"nar_{kind}_{y}{m}")
