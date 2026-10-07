@@ -156,3 +156,47 @@ def add_beforeinfo(e, bi):
 FEATS_BI = FEATS + ["d_exh_self", "bi_ex_course", "d_course", "bi_ex_st", "r_ex_st", "bi_ex_f",
                     "bi_tilt", "bi_prop_new", "bi_parts", "bi_adj",
                     "bi_wind", "bi_wind_dir", "bi_wave", "bi_air", "bi_water", "bi_weather"]
+
+# ---------------- 節間成績・モーターの調子（IDEA-004） ----------------
+def meet_motor_features(e):
+    """今節（同じ選手が同じ場で、前のレースから2日以内に続いて走ったレース）の当該レースより前の成績と、
+    モーター（場×モーター番号）の直近成績を加える。e は add_beforeinfo 済み（r_exh_rank がある）。"""
+    e = e.copy()
+    if "t" not in e:
+        e["t"] = e["date"].astype(int) * 100 + e["rno"]
+    started = ~e["pos_raw"].isin(["K0", "K1"])
+    e["_fin"] = e["pos"].where(e["pos"].notna(), 6.0).where(started)
+    e["_win"] = (e["pos"] == 1).astype(float).where(started)
+    e["_top2"] = (e["pos"] <= 2).astype(float).where(started)
+    e["_d"] = pd.to_datetime(e["date"], format="%Y%m%d")
+    # 節の区切り: 同じ選手・同じ場で、前のレースから2日を超えて空いたら新しい節
+    e = e.sort_values(["toban", "jcd", "t"]).reset_index(drop=True)
+    new = e.groupby(["toban", "jcd"], sort=False)["_d"].diff().dt.days.fillna(99) > 2
+    e["_meet"] = new.astype(int).groupby([e["toban"], e["jcd"]]).cumsum()
+    keys = [e["toban"], e["jcd"], e["_meet"]]
+    e["meet_n"] = e.groupby(keys).cumcount()
+    # 当該レースより前の平均（累積和 − 当該レースの値）を、値のあるレース数で割る
+    for c, name in (("_fin", "meet_fin"), ("st", "meet_st"), ("r_exh_rank", "meet_exh_rank")):
+        v = e[c]
+        cs = v.fillna(0).groupby(keys).cumsum() - v.fillna(0)
+        cn = v.notna().astype(int).groupby(keys).cumsum() - v.notna().astype(int)
+        e[name] = (cs / cn).where(cn > 0)
+    w = e["_win"].fillna(0)
+    e["meet_wins"] = w.groupby(keys).cumsum() - w
+    # モーター（場×モーター番号）の直近30走と、直近7日（＝今節）の平均着順（当該レースより前）
+    e = e.sort_values(["jcd", "motor_no", "t"]).reset_index(drop=True)
+    gmo = e.groupby(["jcd", "motor_no"], sort=False)
+    e["mo_fin30"] = gmo["_fin"].transform(lambda x: x.shift(1).rolling(30, min_periods=5).mean())
+    e["mo_top2_30"] = gmo["_top2"].transform(lambda x: x.shift(1).rolling(30, min_periods=5).mean())
+    # 7日の窓（当日を含む）の合計・件数から、当該レースの分を引いて「より前」の平均にする
+    out = np.full(len(e), np.nan)
+    for _, idx in gmo.indices.items():
+        v = pd.Series(e["_fin"].values[idx], index=e["_d"].values[idx])
+        sm = v.fillna(0).rolling("7D").sum().values - v.fillna(0).values
+        cn = v.notna().astype(float).rolling("7D").sum().values - v.notna().astype(float).values
+        out[idx] = np.where(cn > 0.5, sm / np.maximum(cn, 1), np.nan)
+    e["mo_fin_meet"] = out
+    return e.drop(columns=["_fin", "_win", "_top2", "_d", "_meet"])
+
+FEATS_C1 = FEATS_BI + ["meet_n", "meet_fin", "meet_wins", "meet_st", "meet_exh_rank"]
+FEATS_C2 = FEATS_C1 + ["mo_fin30", "mo_top2_30", "mo_fin_meet"]

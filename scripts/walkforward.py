@@ -22,7 +22,7 @@ from sklearn.isotonic import IsotonicRegression
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
-from boatlib.features import FEATS, FEATS_BI, add_beforeinfo, history_features, race_features
+from boatlib.features import FEATS, FEATS_BI, FEATS_C1, FEATS_C2, add_beforeinfo, history_features, meet_motor_features, race_features
 from boatlib.parse import COMBOS
 from exp_trifecta import stage_model, stage_trifecta
 
@@ -42,9 +42,11 @@ def load(datadir, feats=FEATS):
     odds = odds.assign(date=odds["date"].astype(str), jcd=odds["jcd"].astype(str).str.zfill(2))
     odds = odds[odds["date"] < TEST_START]
     e = race_features(history_features(e))
-    if feats is FEATS_BI:
+    if feats is FEATS_BI or feats is FEATS_C1 or feats is FEATS_C2:
         bi = pd.read_parquet(f"{datadir}/beforeinfo.parquet").assign(date=lambda x: x["date"].astype(str))
         e = add_beforeinfo(e, bi[bi["date"] < TEST_START])
+    if feats is FEATS_C1 or feats is FEATS_C2:
+        e = meet_motor_features(e)
     e["absent"] = e["pos_raw"].isin(["K0", "K1"])
     e["refund"] = e["pos_raw"].astype(str).str.match(r"^(F|L|K)")
     key = ["date", "jcd", "rno"]
