@@ -1,5 +1,5 @@
-"""1レースの予想（凍結モデル v2、仮想。投票はしない）
-usage: python scripts/predict_race.py DATADIR STOREDIR BFILE --jcd 24 --rno 9 [--date YYYYMMDD] [--model models/frozen_v2]
+"""1レースの予想（凍結モデル v3、仮想。投票はしない）
+usage: python scripts/predict_race.py DATADIR STOREDIR BFILE --jcd 24 --rno 9 [--date YYYYMMDD] [--model models/frozen_v3]
 - 過去成績: DATADIR の entries（前日まで）
 - 出走表: BFILE（当日の番組表テキスト、cp932）
 - 直前情報・オッズ: STOREDIR/live/（締切6分前に取得したもの。なければ直前情報なしで予想）
@@ -19,7 +19,7 @@ def main():
     ap.add_argument("datadir"); ap.add_argument("store"); ap.add_argument("bfile")
     ap.add_argument("--jcd", required=True); ap.add_argument("--rno", type=int, required=True)
     ap.add_argument("--date", default=pd.Timestamp.now(tz="Asia/Tokyo").strftime("%Y%m%d"))
-    ap.add_argument("--model", default="models/frozen_v2")
+    ap.add_argument("--model", default="models/frozen_v3")
     a = ap.parse_args()
     key = ["date", "jcd", "rno"]
     hist = pd.read_parquet(f"{a.datadir}/entries.parquet")
