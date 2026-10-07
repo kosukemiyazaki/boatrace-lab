@@ -41,8 +41,11 @@ def history_features(e):
     m = pd.merge_asof(q, lane[["toban", "boat_lane", "t", "cw", "c3", "cn"]], on="t",
                       by=["toban", "boat_lane"], allow_exact_matches=False).sort_values("_i")
     prior = 2.0  # 縮小推定の擬似件数
-    e["hl_win"] = ((m["cw"].fillna(0) + prior * e["boat"].map(BASE_WIN)) / (m["cn"].fillna(0) + prior)).values
-    e["hl_top3"] = ((m["c3"].fillna(0) + prior * e["boat"].map(BASE_TOP3)) / (m["cn"].fillna(0) + prior)).values
+    # m は e と同じ並び（_i 順）だが行ラベルが違うので、ラベルで突き合わせず位置（.values）で計算する
+    # （2026-10-07 修正。以前はラベルで突き合わせていたため、別の出走の値が入っていた）
+    cw, c3, cn = m["cw"].fillna(0).values, m["c3"].fillna(0).values, m["cn"].fillna(0).values
+    e["hl_win"] = (cw + prior * e["boat"].map(BASE_WIN).values) / (cn + prior)
+    e["hl_top3"] = (c3 + prior * e["boat"].map(BASE_TOP3).values) / (cn + prior)
     e["hl_n"] = m["cn"].fillna(0).values
     return e.drop(columns=[c for c in e.columns if c.startswith("_")])
 

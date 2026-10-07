@@ -1,5 +1,5 @@
 """撤退判定（PREREGISTRATION.md の判定1）。設定はコミット済みのものから変えない。
-usage: python scripts/exit_check.py DATADIR STOREDIR [--model models/frozen_v2] [--n 2000] [--out results/exit_check.md]
+usage: python scripts/exit_check.py DATADIR STOREDIR [--model models/frozen_v3] [--n 2000] [--out results/exit_check.md]
 モデルの特徴量の版は models/<版>/meta.json の feats_name で決まる（bi = 直前情報入り）。
 bi の版では、対象レースの直前情報に live で締切前に取得したもの（live/beforeinfo）を使い、ないレースは対象から外す。
 
@@ -31,7 +31,7 @@ def market(O):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("datadir"); ap.add_argument("store")
-    ap.add_argument("--model", default="models/frozen_v2"); ap.add_argument("--n", type=int, default=2000)
+    ap.add_argument("--model", default="models/frozen_v3"); ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--out", default="results/exit_check.md")
     a = ap.parse_args()
     key = ["date", "jcd", "rno"]
