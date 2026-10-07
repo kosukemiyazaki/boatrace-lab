@@ -1,5 +1,6 @@
 """撤退判定（PREREGISTRATION.md）用のモデルを学習して保存する。保存後は再学習しない。
-usage: python scripts/freeze_model.py DATADIR OUTDIR [--feats base|bi]
+usage: python scripts/freeze_model.py DATADIR OUTDIR [--feats base|bi|c1]
+--feats c1: bi に節間成績（今節の出走数・平均着順・1着数・平均ST・展示タイムの平均順位）を加えた版（IDEA-004 の C1）
 --feats bi: 直前情報（展示進入・展示ST・チルト・部品交換・直前気象、展示タイムのレース内相対値と普段との差）を加えた版。
   直前情報は 2025-10 以降のみ。それ以前は欠損のまま学習する（LightGBM は欠損を扱える）
 - 1〜3着の段階別条件付きロジット（LightGBM, 特徴量 FEATS）
@@ -14,14 +15,14 @@ from sklearn.isotonic import IsotonicRegression
 sys.path.insert(0, os.path.dirname(__file__)); sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from walkforward import load
 from exp_trifecta import stage_model, stage_trifecta
-from boatlib.features import FEATS, FEATS_BI
+from boatlib.features import FEATS, FEATS_BI, FEATS_C1
 from boatlib.parse import COMBOS
 
 TRAIN_END, ES_MONTH, CAL_MONTH = "20260630", "202607", "202608"
 
 def main(datadir, out, feats_name="base"):
     os.makedirs(out, exist_ok=True)
-    F = FEATS_BI if feats_name == "bi" else FEATS
+    F = {"base": FEATS, "bi": FEATS_BI, "c1": FEATS_C1}[feats_name]
     r, X, mask, refund, pos, O = load(datadir, F)  # load は 2026-09 以降を除外する
     d = r["date"].to_numpy(dtype=object).astype(str); ym = np.array([x[:6] for x in d])
     y = r["tri_combo"].map({c: i for i, c in enumerate(COMBOS)}).values
@@ -46,6 +47,6 @@ def main(datadir, out, feats_name="base"):
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("out"); ap.add_argument("--feats", default="base", choices=["base", "bi"])
+    ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("out"); ap.add_argument("--feats", default="base", choices=["base", "bi", "c1"])
     a = ap.parse_args()
     main(a.datadir, a.out, a.feats)

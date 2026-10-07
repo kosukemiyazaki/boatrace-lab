@@ -1,20 +1,24 @@
 """締切前の予想（live のジョブの中で使う）。凍結モデルの3連単確率を計算するだけで、買い目は出さない。
-- 起動時に1回: 前日までの成績・直前情報と当日の番組表から、当日全レースの特徴量（直前情報以外）を計算しておく
+- 起動時: 前日までの成績・直前情報と当日の番組表を読み込み、当日全レースの特徴量を計算する
+- 当日の結果・直前情報が入るたびに refresh() で特徴量を計算し直す（学習時と同じ手順を全データに対して行う）
+  → 節間成績や過去成績に、当日の前のレースの結果が入る
 - 締切6分前: そのレースの直前情報を入れて、レース内の特徴量（展示タイムの相対値・順位、普段との差、進入の差、展示STの相対値）
   を add_beforeinfo と同じ式で計算し、予想する
-注意: 選手の「普段の展示」（直近10走の平均）は前日までの値。当日の前のレースの展示は入らない（学習時は入っている）。
 """
 import json
+import threading
+
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from boatlib.features import (BI_BOAT_COLS, BI_RACE_COLS, FEATS, FEATS_BI, add_beforeinfo, history_features,
-                              race_features)
-from boatlib.parse import COMBOS, parse_b
+from boatlib.features import (BI_BOAT_COLS, BI_RACE_COLS, FEATS, FEATS_BI, FEATS_C1, add_beforeinfo,
+                              history_features, meet_motor_features, race_features)
 from boatlib.model import PERMS
+from boatlib.parse import COMBOS, parse_b
 
 PI = np.array([p[0] for p in PERMS]); PJ = np.array([p[1] for p in PERMS]); PK = np.array([p[2] for p in PERMS])
+FEATS_BY_NAME = {"base": FEATS, "bi": FEATS_BI, "c1": FEATS_C1}
 
 def stage_trifecta(s1, s2, s3, mask):
     """scripts/exp_trifecta.py の stage_trifecta と同じ式"""
@@ -29,25 +33,49 @@ class Predictor:
     def __init__(self, datadir, model_dir, btext, date):
         self.date = date
         meta = json.load(open(f"{model_dir}/meta.json"))
-        self.F = FEATS_BI if meta.get("feats_name") == "bi" else FEATS
+        self.feats_name = meta.get("feats_name", "base")
+        self.F = FEATS_BY_NAME[self.feats_name]
         self.model_name = model_dir.rstrip("/").split("/")[-1]
         self.boosters = [lgb.Booster(model_file=f"{model_dir}/stage{k}.txt") for k in (1, 2, 3)]
         self.iso = json.load(open(f"{model_dir}/isotonic.json"))
         hist = pd.read_parquet(f"{datadir}/entries.parquet")
-        hist = hist[hist["date"] < date]
-        today = pd.DataFrame(parse_b(btext, date))
+        self.hist = hist[hist["date"] < date]
+        t = pd.DataFrame(parse_b(btext, date))
         for c in ("pos", "exh_time", "course", "st"):
-            today[c] = np.nan
-        today["pos_raw"] = ""; today["st_raw"] = ""
-        e = pd.concat([hist, today[[c for c in hist.columns if c in today.columns]]], ignore_index=True)
-        e = race_features(history_features(e))
+            t[c] = np.nan
+        t["pos_raw"] = ""; t["st_raw"] = ""
+        self.today_b = t[[c for c in hist.columns if c in t.columns]]
         hb = pd.read_parquet(f"{datadir}/beforeinfo.parquet").assign(date=lambda x: x["date"].astype(str), jcd=lambda x: x["jcd"].astype(str).str.zfill(2))
-        e = add_beforeinfo(e, hb[hb["date"] < date])
-        self.today = {k: g.sort_values("boat").copy() for k, g in e[e["date"] == date].groupby(["jcd", "rno"])}
+        self.hist_bi = hb[hb["date"] < date]
+        self.lock = threading.Lock()
+        self.version = 0
+        self.refresh([], {})
 
-    def predict(self, jcd, rno, bi):
-        """bi: parse_beforeinfo の結果（dict。None なら直前情報なし）。返り値: (1着確率6個, 3連単確率120個, 直前情報の有無)"""
-        r = self.today[(jcd, int(rno))].copy()
+    def refresh(self, results, live_bi):
+        """results: [dict(jcd, rno, boat, toban, pos_raw, pos, course, st, st_raw)]（当日の結果）
+        live_bi: {(jcd, rno): parse_beforeinfo の dict}（当日の締切前の直前情報）"""
+        t = self.today_b.copy()
+        if results:
+            r = pd.DataFrame(results)[["jcd", "rno", "boat", "toban", "pos_raw", "pos", "course", "st", "st_raw"]]
+            r["rno"] = r["rno"].astype(int)
+            t = t.drop(columns=["pos_raw", "pos", "course", "st", "st_raw"]).merge(r, on=["jcd", "rno", "boat", "toban"], how="left")
+            t["pos_raw"] = t["pos_raw"].fillna("")
+        e = pd.concat([self.hist, t], ignore_index=True)
+        e = race_features(history_features(e))
+        lb = pd.DataFrame([dict(date=self.date, jcd=j, rno=int(n), **{c: v for c, v in bi.items()}) for (j, n), bi in live_bi.items() if bi])
+        e = add_beforeinfo(e, pd.concat([self.hist_bi, lb], ignore_index=True) if len(lb) else self.hist_bi)
+        if self.feats_name == "c1":
+            e = meet_motor_features(e)
+        today = {k: g.sort_values("boat").copy() for k, g in e[e["date"] == self.date].groupby(["jcd", "rno"])}
+        with self.lock:
+            self.today = today
+            self.version += 1
+            self.n_results = len(results)
+
+    def features(self, jcd, rno, bi):
+        """予想に使う特徴量（1レース分、艇番順）と、直前情報の有無"""
+        with self.lock:
+            r = self.today[(jcd, int(rno))].copy()
         has_bi = bool(bi) and bi.get("exh1") is not None
         if has_bi:
             for c in BI_RACE_COLS:
@@ -62,6 +90,11 @@ class Predictor:
             r["d_exh_self"] = r["r_exh"] - r["h_rexh10"]
             r["d_course"] = r["bi_ex_course"] - r["boat"]
             r["r_ex_st"] = r["bi_ex_st"] - r["bi_ex_st"].mean()
+        return r, has_bi
+
+    def predict(self, jcd, rno, bi):
+        """bi: parse_beforeinfo の結果（dict。None なら直前情報なし）。返り値: (1着確率6個, 3連単確率120個, 直前情報の有無)"""
+        r, has_bi = self.features(jcd, rno, bi)
         X = np.full((1, 6, len(self.F)), np.nan); mask = np.zeros((1, 6), bool)
         X[0, r["boat"].values - 1] = r[self.F].values.astype(float); mask[0, r["boat"].values - 1] = True
         s = [b.predict(X.reshape(-1, len(self.F)), raw_score=True).reshape(-1, 6) for b in self.boosters]

@@ -59,7 +59,7 @@ def parse_b(txt, date):
 
 # ---------------- 競走成績 ----------------
 K_RACE = re.compile(r"^\s+(\d+)R\s+(\S.*?)\s+H(\d+)m\s+(\S+)\s+風\s+(\S+)\s+(\d+)m\s+波\s+(\d+)cm")
-K_ROW = re.compile(r"^\s+([0-9A-Z]{2})\s+([1-6])\s+(\d{4})\s+(.{8})\s*(\d+)\s+(\d+)\s+([\d.]+)\s+([1-6])?\s+([F L\d.]+?)\s{2,}")
+K_ROW = re.compile(r"^\s+([0-9A-Z]{2}|F )\s*([1-6])\s+(\d{4})\s+(.{8})\s*(\d+)\s+(\d+)\s+([\d.]+)\s+([1-6])?\s+([F L\d.]+?)\s{2,}")
 K_PAY = re.compile(r"^\s+(\d+)R\s+(\d-\d-\d)\s+(\d+)\s+")
 
 def parse_k(txt, date):
@@ -86,6 +86,7 @@ def parse_k(txt, date):
                 continue
             m = K_ROW.match(line + "  ")
             if m:
+                # フライングは着順欄が「F 」（1文字）。2026-10-07 まで読み落としていた
                 pos = m.group(1).strip()
                 st = m.group(9).strip()
                 rows.append(dict(
@@ -95,9 +96,9 @@ def parse_k(txt, date):
                     course=int(m.group(8)) if m.group(8) else None,
                     st=_num(st) if not st.startswith(("F", "L")) else None, st_raw=st,
                 ))
-            elif re.match(r"^\s+([0-9A-Z]{2})\s+([1-6])\s+(\d{4}) ", line):
+            elif re.match(r"^\s+([0-9A-Z]{2}|F )\s*([1-6])\s+(\d{4}) ", line):
                 # 欠場等で展示以降が空の行
-                mm = re.match(r"^\s+([0-9A-Z]{2})\s+([1-6])\s+(\d{4}) ", line)
+                mm = re.match(r"^\s+([0-9A-Z]{2}|F )\s*([1-6])\s+(\d{4}) ", line)
                 rows.append(dict(date=date, jcd=jcd, rno=cur["rno"], boat=int(mm.group(2)), toban=int(mm.group(3)),
                                  pos=None, pos_raw=mm.group(1), motor_no=None, boat_no=None, exh_time=None,
                                  course=None, st=None, st_raw=""))
@@ -184,3 +185,33 @@ def parse_beforeinfo(html):
     m = re.search(r'is-weather(\d+)"', body); out["weather"] = _num(m.group(1)) if m else None
     m = re.search(r'is-wind(\d+)"', body); out["wind_dir"] = _num(m.group(1)) if m else None
     return {c: out.get(c) for c in BI_COLS}
+
+# ---------------- 結果ページ（当日の取り込み用） ----------------
+RESULT_COLS = ["boat", "toban", "pos_raw", "pos", "course", "st", "st_raw"]
+_POS_MAP = {"Ｆ": "F", "Ｌ": "L0", "欠": "K0", "失": "S0", "転": "S0", "落": "S0", "沈": "S0", "妨": "S0", "エ": "S0", "不": "S0"}
+
+def parse_raceresult(html):
+    """boatrace.jp の raceresult ページ -> 艇ごとの [dict]（競走成績ファイル K と同じ意味の列）。結果がまだなければ None。
+    着順は K と同じ記号（01〜06、F0・L0・K0・S0）にそろえる。進入コースはスタート情報の並び順。"""
+    body = re.sub(r"\s+", " ", html)
+    rows = re.findall(r'<tr> <td class="is-fs14">([^<]*)</td> <td class="is-fs14 is-fBold is-boatColor(\d)">\d</td> <td class="is-p10-0"> <span class="is-fs12">(\d{4})</span>', body)
+    if len(rows) < 5:
+        return None
+    out = {}
+    for pos_s, boat, toban in rows:
+        p = z2h(pos_s.strip())
+        if p.isdigit():
+            raw, pos = f"{int(p):02d}", float(p)
+        else:
+            raw, pos = _POS_MAP.get(pos_s.strip()[:1], "S0"), None
+        out[int(boat)] = dict(boat=int(boat), toban=int(toban), pos_raw=raw, pos=pos, course=None, st=None, st_raw="")
+    st = re.findall(r'table1_boatImage1Number is-type(\d)">\d</span>.*?table1_boatImage1TimeInner[^>]*>([^<]*)</span>', body)
+    for course, (boat, v) in enumerate(st, 1):
+        b = int(boat)
+        if b not in out:
+            continue
+        v = v.replace("&nbsp;", " ").strip().split(" ")[0]
+        out[b]["course"] = course
+        out[b]["st_raw"] = v
+        out[b]["st"] = _num(v) if v.startswith(".") else None
+    return [out[b] for b in sorted(out)]
