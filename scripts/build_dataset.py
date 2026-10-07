@@ -18,7 +18,7 @@ def one_day(kpath):
     brows = parse_b(rd(bpath), date) if os.path.exists(bpath) else []
     return brows, krows, races
 
-def main(store, out):
+def main(store, out, with_odds=True):
     os.makedirs(out, exist_ok=True)
     ks = sorted(glob.glob(f"{store}/bk/*/k*.txt.gz"))
     B, K, R = [], [], []
@@ -35,7 +35,7 @@ def main(store, out):
     print("entries", len(e), "races", len(r), "days", len(ks))
 
     frames = []
-    for p in sorted(glob.glob(f"{store}/odds/*.csv.gz")):
+    for p in (sorted(glob.glob(f"{store}/odds/*.csv.gz")) if with_odds else []):
         frames.append(pd.read_csv(p, dtype={"date": str, "jcd": str}))
     if frames:
         o = pd.concat(frames, ignore_index=True)
@@ -49,4 +49,5 @@ def main(store, out):
         print("beforeinfo races", len(b))
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    # --no-odds: オッズを読み込まない（live のジョブ開始時など、出走表・成績・直前情報だけ必要なとき）
+    main(sys.argv[1], sys.argv[2], with_odds="--no-odds" not in sys.argv)

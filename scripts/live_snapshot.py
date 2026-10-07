@@ -5,6 +5,8 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
     10分前: [締切-10, 締切-7)  に 3連単・単勝複勝オッズ   -> STOREDIR/live_t10/{odds3t,oddstf}/YYYYMMDD.csv.gz
      6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報 -> STOREDIR/live/{odds3t,oddstf,beforeinfo}/YYYYMMDD.csv.gz
   （6分前の保存場所・形式は撤退判定 scripts/exit_check.py が読むので変えない）
+- --model と --datadir を指定すると、6分前の取得の直後に凍結モデルで予想（各艇の1着確率と3連単120通りの確率）を計算し、
+  STOREDIR/live_pred/YYYYMMDD_<ジョブID>.csv.gz に保存する（予想した時刻 predicted_at 付き。買い目は出さない）
 - 取得時刻 fetched_at 付き。保存ファイルはジョブごとに分ける（YYYYMMDD_<ジョブID>.csv.gz）。
   ジョブが重なっても上書きし合わない。同じ日の他のファイルにあるレースは取得済みとして飛ばす。
   読む側（exit_check.py, compare_live.py）は日付のファイルをまとめて読み、重複を除く
@@ -35,7 +37,7 @@ def http(url, timeout=40):
         return r.read()
 
 def today_schedule(date):
-    """番組表から [(jcd, rno, deadline datetime)]"""
+    """番組表から ([(jcd, rno, deadline datetime)], 番組表テキスト)"""
     d = dt.date(int(date[:4]), int(date[4:6]), int(date[6:]))
     name = f"b{d:%y%m%d}"
     raw = http(f"https://www1.mbrace.or.jp/od2/B/{d:%Y%m}/{name}.lzh", 60)
@@ -48,7 +50,7 @@ def today_schedule(date):
     for r in parse_b(txt, date):
         hh, mm = map(int, r["deadline"].split(":"))
         seen[(r["jcd"], r["rno"])] = dt.datetime(d.year, d.month, d.day, hh, mm, tzinfo=JST)
-    return sorted(((j, n, t) for (j, n), t in seen.items()), key=lambda x: x[2])
+    return sorted(((j, n, t) for (j, n), t in seen.items()), key=lambda x: x[2]), txt
 
 TAG = os.environ.get("GITHUB_RUN_ID") or dt.datetime.now(JST).strftime("%H%M%S")
 
@@ -64,8 +66,18 @@ def load_existing(store, date):
                             done.add((ld, r[1], int(r[2])))
     return done
 
-def save(store, date, rows, lock):
+PRED_HEAD = HEAD[:4] + ["bi_fetched_at", "predicted_at", "model", "has_bi"] + [f"win{b}" for b in range(1, 7)] + COMBOS
+
+def save(store, date, rows, lock, preds=None):
     with lock:
+        if preds:
+            f = f"{store}/live_pred/{date}_{TAG}.csv.gz"
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            with gzip.open(f + ".tmp", "wt", newline="") as fh:
+                w = csv.writer(fh); w.writerow(PRED_HEAD)
+                for k in sorted(preds):
+                    w.writerow(preds[k])
+            os.replace(f + ".tmp", f)
         for ld, d, _, _, pages in LEADS:
             for p in pages:
                 if not rows[(ld, p)]:
@@ -84,18 +96,39 @@ def main():
     ap.add_argument("--date", default=now().strftime("%Y%m%d"))
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--no-push", action="store_true")
+    ap.add_argument("--model", help="凍結モデルのディレクトリ（予想する場合）")
+    ap.add_argument("--datadir", help="build_dataset.py の出力（予想する場合）")
     a = ap.parse_args()
     date = a.date
     hh, mm = map(int, a.until.split(":"))
     until = now().replace(hour=hh, minute=mm, second=0, microsecond=0)
-    sched = today_schedule(date)
+    sched, btext = today_schedule(date)
+    # 予想の準備は裏で進める（データセットの作成完了 = DATADIR/READY を待ってから）。準備ができるまでのレースは予想なしで取得だけする
+    pred_box = {"p": None}
+    def init_predictor():
+        try:
+            t0 = time.monotonic()
+            while not os.path.exists(f"{a.datadir}/READY"):
+                if time.monotonic() - t0 > 1800:
+                    print("predictor init: dataset not ready in 30 min", flush=True); return
+                time.sleep(10)
+            from boatlib.predictor import Predictor
+            p = Predictor(a.datadir, a.model, btext, date)
+            pred_box["p"] = p
+            print(f"predictor ready ({p.model_name}, {time.monotonic() - t0:.0f}s, races={len(p.today)})", flush=True)
+        except Exception as e:
+            print("predictor init failed:", repr(e), flush=True)
+    if a.model and a.datadir:
+        threading.Thread(target=init_predictor, daemon=True).start()
     print(f"{date}: races={len(sched)} first={sched[0][2]:%H:%M} last={sched[-1][2]:%H:%M} until={until:%H:%M}", flush=True)
     rows = {(ld, p): {} for ld, _, _, _, pages in LEADS for p in pages}
+    preds = {}
     lock = threading.Lock()
     started = load_existing(a.store, date)
     print("already fetched (other jobs):", len(started), flush=True)
 
     def snap(ld, pages, jcd, rno, deadline):
+        parsed = {}
         for p in pages:
             cols, parser = PAGES[p]
             t = now()
@@ -104,15 +137,29 @@ def main():
                 o = parser(html)
             except Exception as e:
                 print("NG", p, jcd, rno, repr(e), flush=True); o = None
+            parsed[p] = (o, t)
             row = [date, jcd, rno, f"{deadline:%H:%M}", t.strftime("%H:%M:%S")] + \
                   ([("" if o[c] is None else o[c]) for c in cols] if o else [""] * len(cols))
             with lock:
                 rows[(ld, p)][(jcd, rno)] = row
         print(f"snap {ld} {jcd}-{rno:02d} deadline={deadline:%H:%M} done={now():%H:%M:%S}", flush=True)
+        predictor = pred_box["p"]
+        if ld == "t6" and predictor is not None:
+            try:
+                bi, bt = parsed.get("beforeinfo", (None, None))
+                win, P, has_bi = predictor.predict(jcd, rno, bi)
+                pt = now()
+                with lock:
+                    preds[(jcd, rno)] = [date, jcd, rno, f"{deadline:%H:%M}", bt.strftime("%H:%M:%S") if bt else "",
+                                         pt.strftime("%H:%M:%S"), predictor.model_name, int(has_bi)] + \
+                                        [round(float(x), 5) for x in win] + [round(float(x), 6) for x in P]
+                print(f"pred {jcd}-{rno:02d} at {pt:%H:%M:%S} (deadline {deadline:%H:%M}) win={[round(float(x), 2) for x in win]}", flush=True)
+            except Exception as e:
+                print("pred failed", jcd, rno, repr(e), flush=True)
 
     last_push = time.monotonic()
     def push(msg):
-        save(a.store, date, rows, lock)
+        save(a.store, date, rows, lock, preds)
         if not a.no_push:
             subprocess.run(["bash", "scripts/push_store.sh", msg], check=False)
 

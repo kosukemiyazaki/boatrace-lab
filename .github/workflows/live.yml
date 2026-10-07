@@ -1,5 +1,6 @@
 name: live
 # レース当日、締切15分前・10分前・6分前のオッズ（3連単・単勝複勝）と6分前の直前情報を取得して data ブランチに保存する。
+# 6分前の取得の直後に、凍結モデル（models/frozen_v3）で予想（確率のみ。買い目は出さない）を計算して live_pred/ に保存する。
 # GitHub の定期起動は数時間遅れたり起動しなかったりするので、ジョブの最後に次のジョブを自分で起動して途切れないようにする。
 #   07:00〜23:05 JST : 最長5時間45分取得して、次を起動
 #   それ以外の時間    : 翌朝07:30まで待つだけ（最長5時間40分）して、次を起動
@@ -47,8 +48,16 @@ jobs:
         with: { ref: data, path: store }
       - if: steps.u.outputs.mode == 'run'
         run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - name: prepare prediction in background
+        if: steps.u.outputs.mode == 'run'
+        # 締切前の予想の準備（ライブラリ・データセット）。取得は待たずに始め、準備ができてから予想を始める
+        run: |
+          nohup bash -c "pip install -q pandas pyarrow numpy scipy scikit-learn lightgbm && python3 scripts/build_dataset.py store ds --no-odds && touch ds/READY" > prep.log 2>&1 &
       - if: steps.u.outputs.mode == 'run'
-        run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }}
+        run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }} --model models/frozen_v3 --datadir ds
+      - name: prep log
+        if: always() && steps.u.outputs.mode == 'run'
+        run: tail -20 prep.log || true
       - name: push
         if: always() && steps.u.outputs.mode == 'run'
         run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
