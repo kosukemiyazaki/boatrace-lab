@@ -5,11 +5,13 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
     10分前: [締切-10, 締切-7)  に 3連単・単勝複勝オッズ   -> STOREDIR/live_t10/{odds3t,oddstf}/YYYYMMDD.csv.gz
      6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報 -> STOREDIR/live/{odds3t,oddstf,beforeinfo}/YYYYMMDD.csv.gz
   （6分前の保存場所・形式は撤退判定 scripts/exit_check.py が読むので変えない）
-- 取得時刻 fetched_at 付き。既存分に追記
+- 取得時刻 fetched_at 付き。保存ファイルはジョブごとに分ける（YYYYMMDD_<ジョブID>.csv.gz）。
+  ジョブが重なっても上書きし合わない。同じ日の他のファイルにあるレースは取得済みとして飛ばす。
+  読む側（exit_check.py, compare_live.py）は日付のファイルをまとめて読み、重複を除く
 - 15分ごとと終了時に scripts/push_store.sh で data ブランチへ push（--no-push で無効）
 時刻はすべて日本時間。
 """
-import argparse, csv, datetime as dt, gzip, os, subprocess, sys, tempfile, threading, time, urllib.request
+import argparse, csv, datetime as dt, glob, gzip, os, subprocess, sys, tempfile, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -48,17 +50,19 @@ def today_schedule(date):
         seen[(r["jcd"], r["rno"])] = dt.datetime(d.year, d.month, d.day, hh, mm, tzinfo=JST)
     return sorted(((j, n, t) for (j, n), t in seen.items()), key=lambda x: x[2])
 
+TAG = os.environ.get("GITHUB_RUN_ID") or dt.datetime.now(JST).strftime("%H%M%S")
+
 def load_existing(store, date):
-    rows = {(ld, p): {} for ld, _, _, _, pages in LEADS for p in pages}
+    """同じ日の既存ファイル（他のジョブの分も含む）で取得済みのレースを返す"""
+    done = set()
     for ld, d, _, _, pages in LEADS:
         for p in pages:
-            f = f"{store}/{d}/{p}/{date}.csv.gz"
-            if os.path.exists(f):
+            for f in glob.glob(f"{store}/{d}/{p}/{date}*.csv.gz"):
                 with gzip.open(f, "rt") as fh:
                     for r in csv.reader(fh):
                         if r[0] != "date":
-                            rows[(ld, p)][(r[1], int(r[2]))] = r
-    return rows
+                            done.add((ld, r[1], int(r[2])))
+    return done
 
 def save(store, date, rows, lock):
     with lock:
@@ -66,7 +70,7 @@ def save(store, date, rows, lock):
             for p in pages:
                 if not rows[(ld, p)]:
                     continue
-                f = f"{store}/{d}/{p}/{date}.csv.gz"
+                f = f"{store}/{d}/{p}/{date}_{TAG}.csv.gz"
                 os.makedirs(os.path.dirname(f), exist_ok=True)
                 with gzip.open(f + ".tmp", "wt", newline="") as fh:
                     w = csv.writer(fh); w.writerow(HEAD + PAGES[p][0])
@@ -86,9 +90,10 @@ def main():
     until = now().replace(hour=hh, minute=mm, second=0, microsecond=0)
     sched = today_schedule(date)
     print(f"{date}: races={len(sched)} first={sched[0][2]:%H:%M} last={sched[-1][2]:%H:%M} until={until:%H:%M}", flush=True)
-    rows = load_existing(a.store, date)
+    rows = {(ld, p): {} for ld, _, _, _, pages in LEADS for p in pages}
     lock = threading.Lock()
-    started = {(ld, j, n) for (ld, p), v in rows.items() for (j, n) in v}
+    started = load_existing(a.store, date)
+    print("already fetched (other jobs):", len(started), flush=True)
 
     def snap(ld, pages, jcd, rno, deadline):
         for p in pages:
