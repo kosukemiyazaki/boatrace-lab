@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - run: |
+      - env:
+          URLS: ${{ inputs.urls }}
+        run: |
           mkdir out && cd out; i=0
-          for u in ${{ inputs.urls }}; do i=$((i+1)); curl -sS -L -A "Mozilla/5.0 (boatrace-lab research)" -o "f$i.html" "$u"; echo "f$i.html $u $(wc -c < f$i.html)" >> index.txt; sleep 2; done
+          for u in $URLS; do i=$((i+1)); curl -sS -L -A "Mozilla/5.0 (boatrace-lab research)" -o "f$i.html" "$u"; echo "f$i.html $u $(wc -c < f$i.html)" >> index.txt; sleep 2; done
           cat index.txt
           git init -q -b probe-out && git config user.name github-actions && git config user.email github-actions@users.noreply.github.com
           git add -A && git commit -qm "fetch-url" && git push -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}" probe-out
