@@ -44,9 +44,10 @@ def main():
     if len(lv) and len(cl):
         m = lv.merge(cl, on=["date", "jcd", "rno"], suffixes=("_live", "_close"))
         L = m[[c + "_live" for c in COMBOS]].to_numpy(float); C = m[[c + "_close" for c in COMBOS]].to_numpy(float)
+        L[~(L > 0)] = np.nan; C[~(C > 0)] = np.nan  # オッズ0（欠場などで売れていない）は値なしとして扱う
         ok = np.isfinite(L).sum(1) >= 60
         L, C = L[ok], C[ok]
-        rank = (-np.where(np.isfinite(L), 1 / L, 0)).argsort(1).argsort(1) + 1  # 6分前の人気順位
+        rank = (-np.where(np.isfinite(L), 1 / np.where(np.isfinite(L), L, 1), 0)).argsort(1, kind="stable").argsort(1) + 1  # 6分前の人気順位
         lead = (pd.to_datetime(m["deadline"][ok], format="%H:%M") - pd.to_datetime(m["fetched_at"][ok], format="%H:%M:%S")).dt.total_seconds() / 60
         out.append(f"## 3連単（{ok.sum()}レース、{m['date'][ok].nunique()}日、取得は締切 {lead.median():.1f} 分前（中央値））\n")
         out.append("締切時オッズ ÷ 6分前オッズ（1未満 = 締切までにオッズが下がった）\n")
@@ -61,7 +62,8 @@ def main():
         cols = [f"tan{b}" for b in range(1, 7)]
         m = lv.merge(cl, on=["date", "jcd", "rno"], suffixes=("_live", "_close"))
         L = m[[c + "_live" for c in cols]].to_numpy(float); C = m[[c + "_close" for c in cols]].to_numpy(float)
-        rank = (-np.where(np.isfinite(L), 1 / L, 0)).argsort(1).argsort(1) + 1
+        L[~(L > 0)] = np.nan; C[~(C > 0)] = np.nan  # オッズ0（欠場などで売れていない）は値なしとして扱う
+        rank = (-np.where(np.isfinite(L), 1 / np.where(np.isfinite(L), L, 1), 0)).argsort(1, kind="stable").argsort(1) + 1
         out.append(f"\n\n## 単勝（{len(m)}レース）\n\n締切時オッズ ÷ 6分前オッズ\n")
         out.append(summarize((C / L).ravel(), rank.ravel(), [(1, 1), (2, 2), (3, 3), (4, 6)]).to_markdown(index=False, floatfmt=".3f"))
     txt = "\n".join(out) if out else "データなし"

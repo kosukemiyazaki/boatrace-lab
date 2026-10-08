@@ -5,7 +5,7 @@ on:
     inputs:
       months: { description: "YYYYMM をカンマ区切り（先頭から順に処理）", required: true }
       stride: { description: "N日に1日だけ取る", default: "1" }
-      pages: { description: "odds3t / oddstf / beforeinfo をカンマ区切り", default: "odds3t" }
+      pages: { description: "odds3t / oddstf / beforeinfo / pcexpect をカンマ区切り", default: "odds3t" }
       parallel: { description: "同時に動かすジョブ数", default: "2" }
 permissions:
   contents: write

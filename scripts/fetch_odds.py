@@ -1,6 +1,7 @@
 """boatrace.jp のレース別ページを月単位で取得する（既定は締切時3連単オッズ odds3t）。
 --page oddstf     : 締切時 単勝・複勝オッズ   -> STOREDIR/oddstf/YYYYMM.csv.gz
 --page beforeinfo : 直前情報（展示・チルト・部品交換・スタート展示・水面気象） -> STOREDIR/beforeinfo/YYYYMM.csv.gz
+--page pcexpect   : 公式コンピュータ予想（3連・2連の予想組番、自信度。IDEA-006 用） -> STOREDIR/pcexpect/YYYYMM.csv.gz
 usage: python scripts/fetch_odds.py YYYYMM STOREDIR [--workers 4] [--budget-min 320] [--stride 3]
 --stride N: N日に1日だけ取る（日付の通し番号 % N == 0 の日）。GitHub Actions からは1リクエスト約9秒かかるため
 （サーバ側で遅延される）、件数を絞るのに使う。
@@ -12,7 +13,7 @@ import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, ti
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import BI_COLS, COMBOS, ODDSTF_COLS, parse_beforeinfo, parse_odds3t, parse_oddstf, race_keys_k
+from boatlib.parse import BI_COLS, COMBOS, ODDSTF_COLS, PCEXPECT_COLS, parse_beforeinfo, parse_odds3t, parse_oddstf, parse_pcexpect, race_keys_k
 
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 BASE = "https://www.boatrace.jp/owpc/pc/race/"
@@ -20,6 +21,7 @@ PAGES = {  # page -> (列名, パーサ)
     "odds3t": (COMBOS, parse_odds3t),
     "oddstf": (ODDSTF_COLS, parse_oddstf),
     "beforeinfo": (BI_COLS, parse_beforeinfo),
+    "pcexpect": (PCEXPECT_COLS, parse_pcexpect),
 }
 
 class Pacer:

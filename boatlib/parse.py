@@ -215,3 +215,31 @@ def parse_raceresult(html):
         out[b]["st_raw"] = v
         out[b]["st"] = _num(v) if v.startswith(".") else None
     return [out[b] for b in sorted(out)]
+
+# ---------------- コンピュータ予想（pcexpect） ----------------
+PCEXPECT_COLS = ["pc_tri", "pc_exacta", "pc_conf"]
+
+def parse_pcexpect(html):
+    """コンピュータ予想ページ -> {pc_tri: 3連の予想組番（"1-2-3;..."）, pc_exacta: 2連の予想組番, pc_conf: 自信度}
+    表記「a=b-c」は1・2着の順不同（a-b-c と b-a-c）、「a=b」は順不同（a-b と b-a）として展開する。"""
+    body = re.sub(r"\s+", " ", html)
+    m = re.search(r'予想フォーカス(.*?)state2_text', body)
+    if not m:
+        return None
+    rows = re.findall(r'<div class="numberSet2_row">(.*?)</div>', m.group(1))
+    tri, ex = [], []
+    for row in rows:
+        toks = re.findall(r'is-type\d">(\d)</span>\s*([=-]?)', row)
+        nums = [int(n) for n, _ in toks]; ops = [o for _, o in toks][:-1]
+        if len(nums) == 3:
+            a, b, c = nums
+            tri.append(f"{a}-{b}-{c}")
+            if ops and ops[0] == "=":
+                tri.append(f"{b}-{a}-{c}")
+        elif len(nums) == 2:
+            a, b = nums
+            ex.append(f"{a}-{b}")
+            if ops and ops[0] == "=":
+                ex.append(f"{b}-{a}")
+    lv = re.search(r'state2_lv is-lv(\d)', body)
+    return {"pc_tri": ";".join(dict.fromkeys(tri)), "pc_exacta": ";".join(dict.fromkeys(ex)), "pc_conf": float(lv.group(1)) if lv else None}

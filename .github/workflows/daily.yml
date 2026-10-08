@@ -30,7 +30,7 @@ jobs:
       - name: odds
         run: |
           for m in $(python3 -c "import sys;print(' '.join(sorted({sys.argv[1][:7].replace('-',''), sys.argv[2][:7].replace('-','')})))" ${{ steps.d.outputs.start }} ${{ steps.d.outputs.end }}); do
-            for p in odds3t oddstf beforeinfo; do
+            for p in odds3t oddstf beforeinfo pcexpect; do
               python3 scripts/fetch_odds.py $m store --page $p --workers 4 --interval 1.0 --budget-min 40
             done
           done
