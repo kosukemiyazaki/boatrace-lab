@@ -62,10 +62,18 @@ def main():
         cols = [f"tan{b}" for b in range(1, 7)]
         m = lv.merge(cl, on=["date", "jcd", "rno"], suffixes=("_live", "_close"))
         L = m[[c + "_live" for c in cols]].to_numpy(float); C = m[[c + "_close" for c in cols]].to_numpy(float)
-        L[~(L > 0)] = np.nan; C[~(C > 0)] = np.nan  # オッズ0（欠場などで売れていない）は値なしとして扱う
+        L0 = ~(L > 0); C0 = ~(C > 0)
+        L[L0] = np.nan; C[C0] = np.nan  # オッズ0（まだ票がない・欠場）は値なしとして扱う
         rank = (-np.where(np.isfinite(L), 1 / np.where(np.isfinite(L), L, 1), 0)).argsort(1, kind="stable").argsort(1) + 1
-        out.append(f"\n\n## 単勝（{len(m)}レース）\n\n締切時オッズ ÷ 6分前オッズ\n")
+        out.append(f"\n\n## 単勝（{len(m)}レース）\n\n締切時オッズ ÷ 6分前オッズ（どちらかが0の艇は除く。下の注を参照）\n")
         out.append(summarize((C / L).ravel(), rank.ravel(), [(1, 1), (2, 2), (3, 3), (4, 6)]).to_markdown(index=False, floatfmt=".3f"))
+        # 単勝は売上が小さく、6分前にはまだ票のない艇（オッズ0）や、最低オッズ1.0に張り付いた1番人気が多い
+        nv = L0 & ~C0
+        fav = np.nanmin(L, 1)
+        out.append(f"\n\n注: 6分前にオッズ0（まだ票がない）の艇 {int(L0.sum())} 艇 / {L0.size} 艇"
+                   f"（{int(L0.any(1).sum())} レース）。そのうち締切時に売れていた {int(nv.sum())} 艇の締切時オッズの中央値 {np.median(C[nv]) if nv.any() else float('nan'):.1f} 倍。"
+                   f"締切時に0の艇 {int(C0.sum())} 艇（欠場など）。"
+                   f"6分前の1番人気が最低オッズ1.0倍のレース {int((fav <= 1.0).sum())} / {len(m)}。")
     txt = "\n".join(out) if out else "データなし"
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     open(a.out, "w").write(txt + "\n")
