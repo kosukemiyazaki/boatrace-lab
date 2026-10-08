@@ -1,5 +1,6 @@
 name: daily
 # 毎朝（日本時間 6:13）直近3日分の番組表(B)・競走成績(K)、締切時の3連単・単勝複勝オッズ、直前情報を data ブランチに追加する。
+# グレード別の開催日程（store/grades.csv）も取り直す。
 # 既に取得済みの日・レースはスキップするので、取りこぼしがあっても翌日以降に埋まる。
 # 2026-10-05 以降のデータは前向きテスト（最終評価）用で、開発には使わない。
 on:
@@ -34,6 +35,8 @@ jobs:
               python3 scripts/fetch_odds.py $m store --page $p --workers 4 --interval 1.0 --budget-min 40
             done
           done
+      - name: grades
+        run: python3 scripts/fetch_grades.py store || true
       - name: push
         if: always()
         run: bash scripts/push_store.sh "daily ${{ steps.d.outputs.end }}"

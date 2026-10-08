@@ -243,3 +243,25 @@ def parse_pcexpect(html):
                 ex.append(f"{b}-{a}")
     lv = re.search(r'state2_lv is-lv(\d)', body)
     return {"pc_tri": ";".join(dict.fromkeys(tri)), "pc_exacta": ";".join(dict.fromkeys(ex)), "pc_conf": float(lv.group(1)) if lv else None}
+
+GRADE_COLS = ["hcd", "grade", "jcd", "start", "end", "title"]
+GRADE_HCD = {"01": "SG・PG1", "02": "G1・G2", "03": "G3", "04": "ヴィーナスシリーズ", "05": "ルーキーシリーズ", "06": "マスターズリーグ"}
+
+def parse_gradesch(html, hcd, year):
+    """boatrace.jp のグレード別開催日程（gradesch?year=YYYY&hcd=NN）。1開催1行。
+    grade は表のクラス名（SGa=SG, G1a=PG1, G1b=G1, G2b=G2 など。そのまま残す）。start/end は YYYYMMDD。"""
+    rows = []
+    for tr in re.findall(r"<tr>.*?</tr>", html, re.S):
+        d = re.search(r'td_date">\s*(\d\d)/(\d\d)-(\d\d)/(\d\d)', tr)
+        j = re.search(r"text_place1_(\d\d)\.png", tr)
+        if not (d and j):
+            continue
+        g = re.search(r'is-p10-0\s+is-([A-Za-z0-9]+)', tr)
+        t = re.search(r'is-alignL">(.*?)</td>', tr, re.S)
+        hd = re.search(r"hd=(\d{8})", tr)
+        m1, d1, m2, d2 = d.groups()
+        ey = int(hd.group(1)[:4]) if hd else int(year)
+        sy = ey - 1 if int(m1) > int(m2) else ey
+        rows.append(dict(hcd=hcd, grade=g.group(1) if g else "", jcd=j.group(1), start=f"{sy}{m1}{d1}", end=f"{ey}{m2}{d2}",
+                         title=_TAG.sub("", t.group(1)).strip() if t else ""))
+    return rows
