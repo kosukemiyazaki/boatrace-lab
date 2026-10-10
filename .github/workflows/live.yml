@@ -65,6 +65,18 @@ jobs:
       - name: push
         if: always() && steps.u.outputs.mode == 'run'
         run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
+      # その日のレースがすべて終わって早めに抜けたときは、終了時刻まで待ってから次を起動する
+      # （待たないと、終了時刻までの間、何もしないジョブが10分おきに起動し続ける）。取得が失敗したときは待たない
+      - name: wait until the end time (all races of the day done)
+        if: success() && steps.u.outputs.mode == 'run'
+        shell: python
+        run: |
+          import datetime as d, time
+          j = d.timezone(d.timedelta(hours=9)); n = d.datetime.now(j)
+          hh, mm = map(int, "${{ steps.u.outputs.until }}".split(":"))
+          s = (n.replace(hour=hh, minute=mm, second=0) - n).total_seconds()
+          if s > 60:
+              print("all races done; wait", int(s), "s"); time.sleep(s)
       - name: sleep until morning
         if: steps.u.outputs.mode == 'sleep'
         run: sleep ${{ steps.u.outputs.sleep }}
