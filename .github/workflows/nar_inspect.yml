@@ -22,7 +22,9 @@ jobs:
               with urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=60) as r:
                   return r.read(), r.headers.get("Content-Type", "")
           y, m = "${{ inputs.year }}", "${{ inputs.month }}"
-          pages = [f"{K}/KeibaWeb/DataDownload/RaceDataDownload", f"{K}/KeibaWeb/DataDownload/RaceDataDownload?type=monthly&k_year={y}&k_month={m}"]
+          pages = [f"{K}/KeibaWeb/DataDownload/RaceDataDownload", f"{K}/KeibaWeb/DataDownload/RaceDataDownload?type=odds&k_year={y}&k_month={m}",
+                   f"{K}/KeibaWeb/DataDownload/RaceDataDownload?type=monthly_odds&k_year={y}&k_month={m}&k_term=1",
+                   f"{K}/KeibaWeb/DataDownload/OddsDataDownload?type=monthly&k_year={y}&k_month={m}&k_term=1"]
           for u in pages:
               try:
                   b, ct = get(u)
@@ -47,6 +49,12 @@ jobs:
                   h = b.decode("utf-8", "replace")
                   links = sorted(set(re.findall(r'(?:href|action)="([^"]*(?:Download|download|odds|Odds|csv|zip)[^"]*)"', h)))
                   print("  links:", links[:60])
+                  print("  type= patterns:", sorted(set(re.findall(r"[?&]type=[A-Za-z_]+[^\"' <]{0,80}", h)))[:40])
+                  print("  DataDownload mentions:", sorted(set(re.findall(r"[A-Za-z/_.]*DataDownload[^\"' <]{0,100}", h)))[:40])
+                  print("  scripts:", re.findall(r'<script[^>]*src="([^"]+)"', h)[:20])
+                  for sc in re.findall(r"<script[^>]*>(.*?)</script>", h, re.S):
+                      if "ownload" in sc or "odds" in sc.lower():
+                          print("  inline script:", re.sub(r"\s+", " ", sc)[:1500])
                   forms = re.findall(r"<form.*?</form>", h, re.S)
                   for f in forms[:5]:
                       print("  form:", re.sub(r"\s+", " ", re.sub(r"<option[^>]*>[^<]*</option>", "", f))[:800])
