@@ -52,4 +52,10 @@ def main():
         time.sleep(a.interval)
 
 if __name__ == "__main__":
+    # Windows のコンソール（cp932）で表示できない文字があっても止まらないようにする
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(errors="replace")
+        except Exception:
+            pass
     main()

@@ -5,7 +5,7 @@ usage: python nar/build.py [--data nar_data]
 - 馬の識別は「馬名＋生年月日」（公式データに馬IDはない）。騎手・調教師は名前＋所属。
 - 着順・タイム・着差・上がり3F・人気はレース後の情報。モデルの特徴量には、そのレースより前のレースの値しか使わない（nar/run.py）。
 """
-import argparse, glob, io, os, re, zipfile
+import sys, argparse, glob, io, os, re, zipfile
 import numpy as np
 import pandas as pd
 
@@ -102,4 +102,10 @@ def main():
         print("3連単の確定オッズが見つからない（賭式の値を確認）")
 
 if __name__ == "__main__":
+    # Windows のコンソール（cp932）で表示できない文字があっても止まらないようにする
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(errors="replace")
+        except Exception:
+            pass
     main()

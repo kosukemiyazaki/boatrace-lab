@@ -193,4 +193,10 @@ def main():
     open(f"{a.out}/summary.md", "w", encoding="utf-8").write("\n".join(md) + "\n"); print("\n".join(md))
 
 if __name__ == "__main__":
+    # Windows のコンソール（cp932）で表示できない文字があっても止まらないようにする
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(errors="replace")
+        except Exception:
+            pass
     main()
