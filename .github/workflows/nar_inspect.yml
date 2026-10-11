@@ -1,0 +1,53 @@
+name: nar-inspect
+# 地方競馬（keiba.go.jp）のデータダウンロードの形を調べる。利用規約により取得したデータはどこにも保存・コミットしない。
+# ログに出すのは、ダウンロードページのリンクの形と、CSV の列名・列数・行数だけ（値は出さない）。
+on:
+  workflow_dispatch:
+    inputs:
+      year: { default: "2026" }
+      month: { default: "8" }
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - shell: python
+        run: |
+          import io, re, time, urllib.request, zipfile, csv
+          UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
+          K = "https://www.keiba.go.jp"
+          def get(u):
+              with urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=60) as r:
+                  return r.read(), r.headers.get("Content-Type", "")
+          y, m = "${{ inputs.year }}", "${{ inputs.month }}"
+          pages = [f"{K}/KeibaWeb/DataDownload/RaceDataDownload", f"{K}/KeibaWeb/DataDownload/RaceDataDownload?type=monthly&k_year={y}&k_month={m}"]
+          for u in pages:
+              try:
+                  b, ct = get(u)
+              except Exception as e:
+                  print("NG", u, e); continue
+              print("==", u, ct, len(b))
+              if b[:2] == b"PK":
+                  z = zipfile.ZipFile(io.BytesIO(b))
+                  for n in z.namelist():
+                      raw = z.read(n)
+                      for enc in ("cp932", "utf-8-sig"):
+                          try:
+                              t = raw.decode(enc); break
+                          except Exception:
+                              pass
+                      rows = list(csv.reader(io.StringIO(t)))
+                      print("  file", n, "encoding", enc, "rows", len(rows), "cols", len(rows[0]) if rows else 0)
+                      print("  header:", rows[0] if rows else None)
+                      if len(rows) > 1:
+                          print("  numeric-like columns:", [i for i, v in enumerate(rows[1]) if re.fullmatch(r"-?[\d.]+", v.strip() or "x")])
+              else:
+                  h = b.decode("utf-8", "replace")
+                  links = sorted(set(re.findall(r'(?:href|action)="([^"]*(?:Download|download|odds|Odds|csv|zip)[^"]*)"', h)))
+                  print("  links:", links[:60])
+                  forms = re.findall(r"<form.*?</form>", h, re.S)
+                  for f in forms[:5]:
+                      print("  form:", re.sub(r"\s+", " ", re.sub(r"<option[^>]*>[^<]*</option>", "", f))[:800])
+              time.sleep(3)
