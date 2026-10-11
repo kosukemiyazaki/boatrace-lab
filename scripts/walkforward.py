@@ -32,8 +32,9 @@ GRID = [dict(omax=om, thr=t) for om in (30, 50, 100) for t in (1.1, 1.2, 1.3)]
 MAXPTS, YEN, CAP = 10, 100, 1000
 RNG = np.random.default_rng(0)
 
-def load(datadir, feats=FEATS):
-    """feats=FEATS_BI のときは直前情報（beforeinfo.parquet）を加える。既定（FEATS）の動作は Step 2 のまま"""
+def load(datadir, feats=FEATS, extra=None):
+    """feats=FEATS_BI のときは直前情報（beforeinfo.parquet）を加える。既定（FEATS）の動作は Step 2 のまま
+    extra: date, jcd, rno, boat と追加の特徴量を持つ表（IDEA-017 のレーティングなど）。entries に結合してから特徴量を作る"""
     e = pd.read_parquet(f"{datadir}/entries.parquet")
     e = e[e["date"] < TEST_START]
     races = pd.read_parquet(f"{datadir}/races.parquet")
@@ -42,11 +43,13 @@ def load(datadir, feats=FEATS):
     odds = odds.assign(date=odds["date"].astype(str), jcd=odds["jcd"].astype(str).str.zfill(2))
     odds = odds[odds["date"] < TEST_START]
     e = race_features(history_features(e))
-    if feats is FEATS_BI or feats is FEATS_C1 or feats is FEATS_C2:
+    if feats is FEATS_BI or feats is FEATS_C1 or feats is FEATS_C2 or (extra is not None and set(FEATS_BI) <= set(feats)):
         bi = pd.read_parquet(f"{datadir}/beforeinfo.parquet").assign(date=lambda x: x["date"].astype(str))
         e = add_beforeinfo(e, bi[bi["date"] < TEST_START])
-    if feats is FEATS_C1 or feats is FEATS_C2:
+    if feats is FEATS_C1 or feats is FEATS_C2 or (extra is not None and set(FEATS_C1) <= set(feats)):
         e = meet_motor_features(e)
+    if extra is not None:
+        e = e.merge(extra, on=["date", "jcd", "rno", "boat"], how="left")
     e["absent"] = e["pos_raw"].isin(["K0", "K1"])
     e["refund"] = e["pos_raw"].astype(str).str.match(r"^(F|L|K)")
     key = ["date", "jcd", "rno"]
