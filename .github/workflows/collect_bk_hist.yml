@@ -1,0 +1,51 @@
+name: collect-bk-hist
+# 長期の番組表(B)・競走成績(K)（IDEA-017 用、2005年〜2023-09）を data-hist ブランチに集める。
+# data ブランチ（live が毎回読む）を重くしないため、別ブランチに置く。年ごとに1ジョブ。
+on:
+  workflow_dispatch:
+    inputs:
+      years: { description: "YYYY をカンマ区切り", required: true }
+      parallel: { description: "同時に動かすジョブ数", default: "3" }
+permissions:
+  contents: write
+concurrency: { group: "collect-bk-hist-${{ inputs.years }}", cancel-in-progress: false }
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs: { years: "${{ steps.p.outputs.years }}" }
+    steps:
+      - id: p
+        shell: python
+        run: |
+          import json, os
+          ys = [y.strip() for y in "${{ inputs.years }}".split(",") if y.strip()]
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"years={json.dumps(ys)}\n")
+      - uses: actions/checkout@v4
+      - name: ensure data-hist branch
+        run: |
+          if ! git ls-remote --exit-code --heads origin data-hist; then
+            git checkout --orphan data-hist && git rm -rqf . && git clean -fdxq
+            echo "長期の B/K（collect-bk-hist が更新。IDEA-017 用）" > README.md
+            git config user.name github-actions; git config user.email github-actions@users.noreply.github.com
+            git add README.md && git commit -qm "init data-hist branch" && git push origin data-hist
+          fi
+  bk:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJson(inputs.parallel || '3') }}
+      matrix: { year: "${{ fromJson(needs.plan.outputs.years) }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data-hist, path: store }
+      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - run: |
+          e="${{ matrix.year }}-12-31"; [ "${{ matrix.year }}" = "2023" ] && e="2023-09-30"
+          python3 scripts/fetch_bk.py ${{ matrix.year }}-01-01 $e store
+      - name: push
+        if: always()
+        env: { BRANCH: data-hist }
+        run: bash scripts/push_store.sh "bk-hist ${{ matrix.year }}"
