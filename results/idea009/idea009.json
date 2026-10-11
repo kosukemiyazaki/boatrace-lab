@@ -1,0 +1,257 @@
+{
+ "summary": {
+  "eval_period": [
+   "20260101",
+   "20260831"
+  ],
+  "eval_races": 37573,
+  "eval_days": 243,
+  "ll_model": 3.777656910206,
+  "ll_close": 3.6916134605923676,
+  "ll_blend": 3.6868478022699485,
+  "quarters": [
+   {
+    "quarter": "2026Q1",
+    "train_races": 106717,
+    "cal_races": 4768,
+    "eval_races": 13978,
+    "blend_ab": [
+     0.228,
+     0.833
+    ],
+    "ll_model": 3.7863211953880818,
+    "ll_close": 3.702916658742469,
+    "ll_blend": 3.6966592888098853
+   },
+   {
+    "quarter": "2026Q2",
+    "train_races": 120583,
+    "cal_races": 4650,
+    "eval_races": 13764,
+    "blend_ab": [
+     0.239,
+     0.836
+    ],
+    "ll_model": 3.755110250899313,
+    "ll_close": 3.6678163013263507,
+    "ll_blend": 3.662305774575678
+   },
+   {
+    "quarter": "2026Q3",
+    "train_races": 133743,
+    "cal_races": 4618,
+    "eval_races": 9831,
+    "blend_ab": [
+     0.267,
+     0.8
+    ],
+    "ll_model": 3.7969044781464,
+    "ll_close": 3.7088597220505446,
+    "ll_blend": 3.7072578836786256
+   }
+  ],
+  "best_roi": 2.1952380952380954,
+  "decision": "はっきりしない → 撤退判定を待つ",
+  "n_combinations_tried": 9
+ },
+ "results": [
+  {
+   "omax": 30,
+   "thr": 1.1,
+   "races": 89,
+   "tickets": 105,
+   "hits": 2,
+   "refunds": 3,
+   "stake": 10500,
+   "ret": 3600,
+   "roi": 0.34285714285714286,
+   "roi_ci95": [
+    0.0,
+    0.8542643346556072
+   ],
+   "roi_q05": 0.0,
+   "p_roi_ge_1_1": 0.0026,
+   "tickets_per_day": 0.43209876543209874,
+   "races_per_day": 0.3662551440329218,
+   "mean_odds": 16.284761904761904,
+   "median_odds": 15.1,
+   "expected_hits_model": 8.526894319686862,
+   "roi_by_quarter": {
+    "2026Q1": 1.161,
+    "2026Q2": 0.0,
+    "2026Q3": 0.0
+   }
+  },
+  {
+   "omax": 30,
+   "thr": 1.2,
+   "races": 10,
+   "tickets": 12,
+   "hits": 1,
+   "refunds": 0,
+   "stake": 1200,
+   "ret": 1290,
+   "roi": 1.075,
+   "roi_ci95": [
+    0.0,
+    2.976923076923077
+   ],
+   "roi_q05": 0.0,
+   "p_roi_ge_1_1": 0.3974,
+   "tickets_per_day": 0.04938271604938271,
+   "races_per_day": 0.0411522633744856,
+   "mean_odds": 16.433333333333334,
+   "median_odds": 15.6,
+   "expected_hits_model": 0.9660910772608007,
+   "roi_by_quarter": {
+    "2026Q1": 6.45,
+    "2026Q2": 0.0,
+    "2026Q3": 0.0
+   }
+  },
+  {
+   "omax": 30,
+   "thr": 1.3,
+   "tickets": 0
+  },
+  {
+   "omax": 50,
+   "thr": 1.1,
+   "races": 142,
+   "tickets": 189,
+   "hits": 4,
+   "refunds": 4,
+   "stake": 18900,
+   "ret": 10870,
+   "roi": 0.5751322751322752,
+   "roi_ci95": [
+    0.08832113259668509,
+    1.2106698054715952
+   ],
+   "roi_q05": 0.14828505340288126,
+   "p_roi_ge_1_1": 0.0506,
+   "tickets_per_day": 0.7777777777777778,
+   "races_per_day": 0.5843621399176955,
+   "mean_odds": 26.434391534391537,
+   "median_odds": 25.0,
+   "expected_hits_model": 11.020775610140827,
+   "roi_by_quarter": {
+    "2026Q1": 0.679,
+    "2026Q2": 0.513,
+    "2026Q3": 0.563
+   }
+  },
+  {
+   "omax": 50,
+   "thr": 1.2,
+   "races": 17,
+   "tickets": 21,
+   "hits": 2,
+   "refunds": 0,
+   "stake": 2100,
+   "ret": 4610,
+   "roi": 2.1952380952380954,
+   "roi_ci95": [
+    0.0,
+    5.225
+   ],
+   "roi_q05": 0.0,
+   "p_roi_ge_1_1": 0.7422,
+   "tickets_per_day": 0.08641975308641975,
+   "races_per_day": 0.06995884773662552,
+   "mean_odds": 27.209523809523812,
+   "median_odds": 22.3,
+   "expected_hits_model": 1.2388208836779904,
+   "roi_by_quarter": {
+    "2026Q1": 1.843,
+    "2026Q2": 0.0,
+    "2026Q3": 4.15
+   }
+  },
+  {
+   "omax": 50,
+   "thr": 1.3,
+   "tickets": 0
+  },
+  {
+   "omax": 100,
+   "thr": 1.1,
+   "races": 204,
+   "tickets": 295,
+   "hits": 5,
+   "refunds": 11,
+   "stake": 29500,
+   "ret": 19930,
+   "roi": 0.6755932203389831,
+   "roi_ci95": [
+    0.13940684741049705,
+    1.4329706717123936
+   ],
+   "roi_q05": 0.19448470898377943,
+   "p_roi_ge_1_1": 0.1158,
+   "tickets_per_day": 1.213991769547325,
+   "races_per_day": 0.8395061728395061,
+   "mean_odds": 42.938983050847455,
+   "median_odds": 38.7,
+   "expected_hits_model": 12.76032861369185,
+   "roi_by_quarter": {
+    "2026Q1": 0.391,
+    "2026Q2": 0.439,
+    "2026Q3": 1.204
+   }
+  },
+  {
+   "omax": 100,
+   "thr": 1.2,
+   "races": 26,
+   "tickets": 34,
+   "hits": 2,
+   "refunds": 0,
+   "stake": 3400,
+   "ret": 4610,
+   "roi": 1.3558823529411765,
+   "roi_ci95": [
+    0.0,
+    3.458145833333324
+   ],
+   "roi_q05": 0.0,
+   "p_roi_ge_1_1": 0.5558,
+   "tickets_per_day": 0.13991769547325103,
+   "races_per_day": 0.10699588477366255,
+   "mean_odds": 43.517647058823535,
+   "median_odds": 44.85,
+   "expected_hits_model": 1.4767881239881364,
+   "roi_by_quarter": {
+    "2026Q1": 0.86,
+    "2026Q2": 0.0,
+    "2026Q3": 3.689
+   }
+  },
+  {
+   "omax": 100,
+   "thr": 1.3,
+   "races": 2,
+   "tickets": 2,
+   "hits": 0,
+   "refunds": 0,
+   "stake": 200,
+   "ret": 0,
+   "roi": 0.0,
+   "roi_ci95": [
+    0.0,
+    0.0
+   ],
+   "roi_q05": 0.0,
+   "p_roi_ge_1_1": 0.0,
+   "tickets_per_day": 0.00823045267489712,
+   "races_per_day": 0.00823045267489712,
+   "mean_odds": 67.5,
+   "median_odds": 67.5,
+   "expected_hits_model": 0.04098329537404796,
+   "roi_by_quarter": {
+    "2026Q1": 0.0,
+    "2026Q2": 0.0
+   }
+  }
+ ]
+}
