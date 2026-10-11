@@ -1,0 +1,34 @@
+name: nar-inspect2
+# 地方競馬情報サイトの当日払戻金ページ（トリプル馬単のキャリーオーバー欄）の構造を調べる（IDEA-021）。
+# 利用規約により値は保存・表示しない。ログには数字を 9 に置き換えた HTML の形だけを出す。
+on:
+  workflow_dispatch:
+    inputs:
+      date: { default: "2026/02/10" }
+      codes: { default: "18 19 20 21 36" }
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - env: { D: "${{ inputs.date }}", CODES: "${{ inputs.codes }}" }
+        shell: python
+        run: |
+          import os, re, time, urllib.request
+          UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
+          for c in os.environ["CODES"].split():
+              u = f"https://www.keiba.go.jp/KeibaWeb/TodayRaceInfo/RefundMoneyList?k_raceDate={os.environ['D']}&k_babaCode={c}"
+              try:
+                  h = urllib.request.urlopen(urllib.request.Request(u, headers=UA), timeout=60).read().decode("utf-8", "replace")
+              except Exception as e:
+                  print(c, "NG", e); continue
+              title = re.search(r"<title>(.*?)</title>", h, re.S)
+              print("== code", c, len(h), (title.group(1).strip() if title else ""), "トリプル" in h, "キャリー" in h)
+              for kw in ("トリプル", "キャリー"):
+                  for m in list(re.finditer(kw, h))[:2]:
+                      frag = re.sub(r"\s+", " ", h[max(0, m.start() - 600): m.start() + 1500])
+                      frag = re.sub(r"\d", "9", frag)
+                      print("  [", kw, "]", frag)
+              time.sleep(3)
