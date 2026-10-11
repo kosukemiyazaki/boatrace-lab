@@ -44,9 +44,16 @@ def parse(html):
             out["sales"] = yen(val)
         elif lab.startswith("返還"):
             out["refund"] = yen(val)
-    # 的中口数と1口あたりの払戻（表の形が分からない部分は文字列から拾う。拾えなければ空のまま）
-    m = re.search(r"([\d,]+)\s*円\s*\|?[^|]*\|?\s*([\d,]+)\s*口", text)
-    if m:
+        elif lab.startswith("的中口数"):
+            m = re.search(r"([\d,]+)口", val)
+            out["hits"] = int(m.group(1).replace(",", "")) if m else None
+        elif lab.startswith("払戻金") and "1口" in lab:
+            out["payout_per_unit"] = yen(val)
+    # 的中口数と1口あたりの払戻が上の項目名で拾えなかった場合だけ、文字列から拾う（拾えなければ空のまま）
+    m = re.search(r"([\d,]+)\s*円\s*\|?[^|]*\|?\s*([\d,]+)\s*口", text) if out["hits"] is None else None
+    if out["hits"] is not None:
+        pass
+    elif m:
         out["payout_per_unit"] = int(m.group(1).replace(",", "")); out["hits"] = int(m.group(2).replace(",", ""))
     elif re.search(r"的中(?:者|票)?なし|該当なし", text):
         out["hits"] = 0
