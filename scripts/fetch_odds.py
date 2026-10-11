@@ -98,6 +98,9 @@ def main():
                 # 中止レースなど表がない場合は空行で記録
                 return k, [date, jcd, rno] + ([("" if o[c] is None else o[c]) for c in cols] if o else [""] * len(cols))
             except urllib.error.HTTPError as e:
+                if a.page.startswith("bc_") and e.code in (403, 404):
+                    # BOATCAST はファイルがないとき 403/404 を返す（江戸川・計測なし・中止など）。データなしとして記録する
+                    return k, [date, jcd, rno] + [""] * len(cols)
                 if e.code in (403, 429):
                     print("rate-limited", e.code, k, flush=True); time.sleep(60 * (i + 1))
                 else:
