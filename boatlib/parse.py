@@ -340,3 +340,60 @@ def parse_odds2tf(html):
             return None
         out.update(got)
     return out
+
+# ---------------- BOATCAST（race.boatcast.jp）のテキストデータ（IDEA-015・売上） ----------------
+# オリジナル展示: /txt/{jcd}/bc_oriten_{YYYYMMDD}_{jcd}_{RR}.txt
+#   1行目 "data="、2行目 "1<TAB>項目数"、3行目 項目名（一　周 / まわり足 / 直　線 / 半周 など、場によって違う）、4〜9行目 艇ごとの値
+BC_ORI_ITEMS = {"lap": ("一", "周"), "half": ("半",), "mawari": ("まわり",), "straight": ("直",)}
+BC_ORI_COLS = ["ori_items"] + [f"ori_{k}{b}" for b in range(1, 7) for k in BC_ORI_ITEMS]
+
+def _bc_lines(text):
+    if not text or not text.startswith("data="):
+        return None
+    return [l for l in text.splitlines()[1:]]
+
+def parse_bc_oriten(text):
+    """bc_oriten の本文 -> {ori_items: 'lap/mawari/straight' など, ori_lap1.., ori_mawari1.., ...}。データがなければ None"""
+    ls = _bc_lines(text)
+    if not ls or len(ls) < 8:
+        return None
+    labels = [x.replace("　", "").strip() for x in ls[1].split("\t") if x.strip()]
+    keys = []
+    for lab in labels:
+        k = "half" if "半" in lab else "mawari" if "まわり" in lab else "straight" if "直" in lab else "lap" if "周" in lab else None
+        keys.append(k)
+    out = {c: None for c in BC_ORI_COLS}
+    out["ori_items"] = "/".join(k or "?" for k in keys)
+    for row in ls[2:8]:
+        f = row.split("\t")
+        if not f or not f[0].strip().isdigit():
+            continue
+        b = int(f[0])
+        for k, v in zip(keys, f[2:2 + len(keys)]):
+            if k:
+                out[f"ori_{k}{b}"] = _num(v.strip())
+    return out
+
+# 確定票数（3連単）: /txt/{jcd}/bc_kakutei_hyousu3_{YYYYMMDD}_{jcd}_{RR}.txt
+#   3〜8行目: 1着の艇ごとに 名前 + 25列（先頭20列が 2着×3着 の昇順の3連単票数）、9行目: 合計票数 …
+BC_VOTE_COLS = ["votes_total"] + [f"v{c}" for c in [f"{i}-{j}-{k}" for i in range(1, 7) for j in range(1, 7) for k in range(1, 7) if len({i, j, k}) == 3]]
+
+def parse_bc_hyousu3(text):
+    """bc_kakutei_hyousu3 の本文 -> {votes_total, v1-2-3, ...}（票数 = 100円単位）。データがなければ None"""
+    ls = _bc_lines(text)
+    if not ls or len(ls) < 8:
+        return None
+    out = {}
+    for i, row in enumerate(ls[1:7]):
+        f = row.split("\t")
+        vals = [int(x) for x in f[1:21] if x.strip().lstrip("-").isdigit()]
+        if len(vals) != 20:
+            return None
+        others = [b for b in range(1, 7) if b != i + 1]
+        n = 0
+        for j in others:
+            for k in [b for b in others if b != j]:
+                out[f"v{i + 1}-{j}-{k}"] = vals[n]; n += 1
+    tot = [x for x in ls[7].split("\t") if x.strip()]
+    out["votes_total"] = int(tot[0]) if tot and tot[0].strip().isdigit() else None
+    return out

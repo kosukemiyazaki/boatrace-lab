@@ -4,6 +4,8 @@
 --page pcexpect   : 公式コンピュータ予想（3連・2連の予想組番、自信度。IDEA-006 用） -> STOREDIR/pcexpect/YYYYMM.csv.gz
 --page odds3f     : 締切時 3連複オッズ（20通り。IDEA-013 用） -> STOREDIR/odds3f/YYYYMM.csv.gz
 --page odds2tf    : 締切時 2連単（30通り）・2連複（15通り）オッズ（IDEA-013 用） -> STOREDIR/odds2tf/YYYYMM.csv.gz
+--page bc_oriten  : BOATCAST のオリジナル展示（一周・まわり足・直線、場によって項目が違う。IDEA-015 用） -> STOREDIR/bc_oriten/YYYYMM.csv.gz
+--page bc_votes   : BOATCAST の3連単確定票数（120通り＋合計。売上・自分の賭けの影響の計算用） -> STOREDIR/bc_votes/YYYYMM.csv.gz
 usage: python scripts/fetch_odds.py YYYYMM STOREDIR [--workers 4] [--budget-min 320] [--stride 3]
 --stride N: N日に1日だけ取る（日付の通し番号 % N == 0 の日）。GitHub Actions からは1リクエスト約9秒かかるため
 （サーバ側で遅延される）、件数を絞るのに使う。
@@ -15,8 +17,8 @@ import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, ti
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, PCEXPECT_COLS, parse_beforeinfo, parse_odds2tf,
-                           parse_odds3f, parse_odds3t, parse_oddstf, parse_pcexpect, race_keys_k)
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, PCEXPECT_COLS, parse_bc_hyousu3,
+                           parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf, parse_pcexpect, race_keys_k)
 
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 BASE = "https://www.boatrace.jp/owpc/pc/race/"
@@ -27,7 +29,16 @@ PAGES = {  # page -> (列名, パーサ)
     "pcexpect": (PCEXPECT_COLS, parse_pcexpect),
     "odds3f": (COMBOS_3F, parse_odds3f),            # 締切時 3連複オッズ（IDEA-013）
     "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf),  # 締切時 2連単・2連複オッズ（IDEA-013）
+    "bc_oriten": (BC_ORI_COLS, parse_bc_oriten),        # BOATCAST オリジナル展示（一周・まわり足・直線。IDEA-015）
+    "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3),       # BOATCAST 3連単の確定票数（売上・自分の賭けの影響）
 }
+BC = "https://race.boatcast.jp/txt"
+def page_url(page, date, jcd, rno):
+    if page == "bc_oriten":
+        return f"{BC}/{jcd}/bc_oriten_{date}_{jcd}_{int(rno):02d}.txt"
+    if page == "bc_votes":
+        return f"{BC}/{jcd}/bc_kakutei_hyousu3_{date}_{jcd}_{int(rno):02d}.txt"
+    return f"{BASE}{page}?rno={rno}&jcd={jcd}&hd={date}"
 
 class Pacer:
     """スレッドごとに最低 interval 秒あける"""
@@ -80,7 +91,7 @@ def main():
         for i in range(4):
             pacer.wait()
             try:
-                req = urllib.request.Request(f"{BASE}{a.page}?rno={rno}&jcd={jcd}&hd={date}", headers=UA)
+                req = urllib.request.Request(page_url(a.page, date, jcd, rno), headers=UA)
                 with urllib.request.urlopen(req, timeout=30) as r:
                     html = r.read().decode("utf-8", "replace")
                 o = parser(html)
