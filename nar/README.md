@@ -58,3 +58,13 @@ python nar\carryover.py report                # 集計 → results\nar_carryover
 ```
 - 取得したページの値は `nar_data\carryover.csv` にだけ保存します（コミットしない）。
 - 最初の1件と50件ごとに、読み取れた値（繰越・売上・次回への繰越・的中口数）を表示します。空欄ばかりなら、ページの形が想定と違うので `parse()` を直してください。
+
+## 券種間のずれ（IDEA-024：3連単の市場を答えにして、単勝・複勝・馬単・馬連・ワイドのずれを探す）
+すでに取得・作成済みの `nar_data`（`build.py` の後）があれば、追加の取得は不要です（数分）。
+```
+git pull
+python nar\cross_pool.py                      # → results\nar_cross_pool.md（集計値のみ。共有・コミットしてよい）
+git add results\nar_cross_pool.md
+git commit -m "IDEA-024 result"
+git push
+```

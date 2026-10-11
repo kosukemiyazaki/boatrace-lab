@@ -48,7 +48,25 @@ def main(out):
                     if pm >= pd.Period("2026-03", "M"):
                         for (a, b_, c), o in zip(perms, odds):
                             Od.append([venue, date, str(rno), "3連単", str(a + 1), str(b_ + 1), str(c + 1), f"{o:.1f}", "", "1"])
-                        Od.append([venue, date, str(rno), "単勝", "1", "", "", "2.0", "", "1"])
+                        # 他の券種（3連単の確率に雑音を掛けた作り物のオッズ。IDEA-024 の動作確認用）
+                        P3 = dict(zip(perms, t))
+                        def agg(f):
+                            d = {}
+                            for k3, v in P3.items():
+                                for kk in f(k3):
+                                    d[kk] = d.get(kk, 0) + v
+                            return d
+                        noisy = lambda q: max(1.0, round(0.8 / q * float(np.exp(rng.normal(0, 0.3))), 1))
+                        for (x,), q in agg(lambda k3: [(k3[0],)]).items():
+                            Od.append([venue, date, str(rno), "単勝", str(x + 1), "", "", f"{noisy(q):.1f}", "", "1"])
+                        for (x,), q in agg(lambda k3: [(k3[0],), (k3[1],), (k3[2],)]).items():
+                            o = noisy(q); Od.append([venue, date, str(rno), "複勝", str(x + 1), "", "", f"{o:.1f}", f"{o * 1.5:.1f}", "1"])
+                        for (x, y), q in agg(lambda k3: [(k3[0], k3[1])]).items():
+                            Od.append([venue, date, str(rno), "馬単", str(x + 1), str(y + 1), "", f"{noisy(q):.1f}", "", "1"])
+                        for (x, y), q in agg(lambda k3: [tuple(sorted(k3[:2]))]).items():
+                            Od.append([venue, date, str(rno), "馬連", str(x + 1), str(y + 1), "", f"{noisy(q):.1f}", "", "1"])
+                        for (x, y), q in agg(lambda k3: [tuple(sorted(c)) for c in itertools.combinations(k3, 2)]).items():
+                            o = noisy(q); Od.append([venue, date, str(rno), "ワイド", str(x + 1), str(y + 1), "", f"{o:.1f}", f"{o * 1.5:.1f}", "1"])
         ym = f"{pm.year}{pm.month:02d}"
         def zipit(path, files):
             os.makedirs(os.path.dirname(path), exist_ok=True)
