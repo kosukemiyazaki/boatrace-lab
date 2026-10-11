@@ -35,31 +35,25 @@ def record(s):
     return n.where(n > 0), p[0], p[0] + p[1] + p[2]
 
 def to_seconds(s):
-    """「1:12.3」「72.3」→ 秒"""
+    """「1:12.3」「72.3」→ 秒。数字だけの「1327」は 1分32秒7（公式データの走破タイムの表記）"""
+    s = s.str.strip()
     m = s.str.extract(r"(?:(\d+):)?(\d+(?:\.\d+)?)")
-    return m[0].astype(float).fillna(0) * 60 + m[1].astype(float)
+    sec = m[0].astype(float).fillna(0) * 60 + m[1].astype(float)
+    v = pd.to_numeric(s.where(s.str.fullmatch(r"\d{3,}")), errors="coerce")
+    return sec.where(v.isna(), (v // 1000) * 60 + (v % 1000) / 10)
 
-def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--data", default="nar_data")
-    a = ap.parse_args()
-    races, horses, pays = [], [], []
-    for p in sorted(glob.glob(f"{a.data}/race/*.zip")):
-        for n, df in read_zip_csvs(p).items():
-            if "racelist" in n:
-                races.append(df)
-            elif "horselist" in n:
-                horses.append(df)
-            elif "payback" in n:
-                pays.append(df)
-    r = pd.concat(races, ignore_index=True); h = pd.concat(horses, ignore_index=True); pb = pd.concat(pays, ignore_index=True)
-    key = ["venue", "date", "rno"]
-    def keycols(df):
-        return pd.DataFrame({"venue": df["競馬場"].str.strip(), "date": digits(df["競走年月日"]).str[:8], "rno": num(df["レース番号"]).astype("Int64")})
-    R = pd.concat([keycols(r), pd.DataFrame({
+KEY = ["venue", "date", "rno"]
+
+def keycols(df):
+    return pd.DataFrame({"venue": df["競馬場"].str.strip(), "date": digits(df["競走年月日"]).str[:8], "rno": num(df["レース番号"]).astype("Int64")})
+
+def race_table(r):
+    return pd.concat([keycols(r), pd.DataFrame({
         "post_time": r["発走時刻"].str.strip(), "race_type": r["競走種類名称"].str.strip(), "race_name": r["レース名"].str.strip(),
         "surface": r["芝ダート区分"].str.strip(), "turn": r["回り"].str.strip(), "dist": num(r["距離"]), "weather": r["天候"].str.strip(),
         "going": r["馬場"].str.strip(), "field": num(r["頭数"]), "cond": r["条件"].str.strip(), "prize1": num(r["1着賞金(円)"])})], axis=1)
-    R = R.drop_duplicates(key)
+
+def horse_table(h):
     H = pd.concat([keycols(h), pd.DataFrame({
         "waku": num(h["枠番"]), "num": num(h["馬番"]).astype("Int64"), "horse": h["馬名"].str.strip() + "|" + digits(h["生年月日"]),
         "sex": h["性"].str.strip(), "age": num(h["齢"]), "sire": h["父馬名"].str.strip(), "dam_sire": h["母父馬名"].str.strip(),
@@ -68,14 +62,35 @@ def main():
         "body_weight": num(h["馬体重"]), "body_diff": num(h["馬体重増減"]),
         "best_time": to_seconds(h["最高タイム"]), "best_time_good": to_seconds(h["最高タイム良馬場"]),
         # レース後の情報（特徴量には使わない）
-        "pos_raw": h["着順"].str.strip(), "pos": num(h["着順"]), "time": to_seconds(h["タイム"]), "last3f": num(h["上がり3F"]), "pop": num(h["人気"])})], axis=1)
+        # 着順が空欄の馬は、理由（出走取消・競走除外・競走取止め・競走中止）が「着差」の列に入っている
+        "pos_raw": h["着順"].str.strip().where(h["着順"].str.strip() != "", h["着差"].str.strip()), "pos": num(h["着順"]), "time": to_seconds(h["タイム"]), "last3f": num(h["上がり3F"]), "pop": num(h["人気"])})], axis=1)
     for col, src in (("rec", "全成績"), ("rec_venue", "当競馬場成績"), ("rec_dist", "うち当距離成績"), ("jrec", "騎手成績")):
         n_, w_, t3_ = record(h[src])
         H[f"{col}_n"], H[f"{col}_win"], H[f"{col}_top3"] = n_, w_ / n_, t3_ / n_
-    H = H.dropna(subset=["num"]).drop_duplicates(key + ["num"])
-    P = pd.concat([keycols(pb), pd.DataFrame({
+    return H
+
+def pay_table(pb):
+    return pd.concat([keycols(pb), pd.DataFrame({
         "tri": num(pb["３連単組番馬番1"]).astype("Int64").astype(str) + "-" + num(pb["３連単組番馬番2"]).astype("Int64").astype(str) + "-" + num(pb["３連単組番馬番3"]).astype("Int64").astype(str),
-        "tri_pay": num(pb["３連単払戻金（円）"])})], axis=1).drop_duplicates(key)
+        "tri_pay": num(pb["３連単払戻金（円）"])})], axis=1)
+
+def main():
+    ap = argparse.ArgumentParser(); ap.add_argument("--data", default="nar_data")
+    a = ap.parse_args()
+    races, horses, pays = [], [], []
+    # メモリを節約するため、月ごとに必要な列だけの表に直してからつなげる（生の全列を全期間ぶん持たない）
+    for p in sorted(glob.glob(f"{a.data}/race/*.zip")):
+        for n, df in read_zip_csvs(p).items():
+            if "racelist" in n:
+                races.append(race_table(df))
+            elif "horselist" in n:
+                horses.append(horse_table(df))
+            elif "payback" in n:
+                pays.append(pay_table(df))
+    key = KEY
+    R = pd.concat(races, ignore_index=True).drop_duplicates(key)
+    H = pd.concat(horses, ignore_index=True).dropna(subset=["num"]).drop_duplicates(key + ["num"])
+    P = pd.concat(pays, ignore_index=True).drop_duplicates(key)
     os.makedirs(a.data, exist_ok=True)
     R.to_parquet(f"{a.data}/races.parquet"); H.to_parquet(f"{a.data}/horses.parquet"); P.to_parquet(f"{a.data}/tri_pay.parquet")
     print(f"races {len(R)}（{R['date'].min()}〜{R['date'].max()}、{R['venue'].nunique()}場）, horses {len(H)}, payouts {len(P)}")

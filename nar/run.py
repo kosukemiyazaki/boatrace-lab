@@ -140,7 +140,7 @@ def main():
         od = np.array([Ok[k].get(c, np.nan) for c in lab], float)
         if np.isfinite(od).sum() < len(lab) * 0.8 or tri not in lab:
             continue
-        inv = np.where(np.isfinite(od) & (od > 0), 1 / od, 0); q = inv / inv.sum()
+        inv = np.zeros(len(od)); pos = np.isfinite(od) & (od > 0); inv[pos] = 1 / od[pos]; q = inv / inv.sum()
         rows.append(dict(key=k, t=t, q=q, od=od, y=lab.index(tri), pay=Pk.get(k, (None, np.nan))[1]))
     print("市場と比べるレース", len(rows), flush=True)
     fit = [r for r in rows if r["key"][1] <= FIT[1]]; ev = [r for r in rows if r["key"][1] >= EVAL[0]]
@@ -164,7 +164,7 @@ def main():
     st = {b: 0.0 for b in bands}; rt = {b: 0.0 for b in bands}
     for r in rows:
         for b in bands:
-            m = np.isfinite(r["od"]) & (r["od"] >= b[0]) & (r["od"] < b[1])
+            m = np.isfinite(r["od"]) & (r["od"] > 0) & (r["od"] >= b[0]) & (r["od"] < b[1])  # オッズ 0 は取消馬を含む組番（買えない）
             st[b] += m.sum() * 100
             if m[r["y"]] and np.isfinite(r["pay"]):
                 rt[b] += r["pay"]
