@@ -4,6 +4,8 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
     15分前: [締切-15, 締切-11) に 3連単・単勝複勝オッズ   -> STOREDIR/live_t15/{odds3t,oddstf}/YYYYMMDD.csv.gz
     10分前: [締切-10, 締切-7)  に 3連単・単勝複勝オッズ   -> STOREDIR/live_t10/{odds3t,oddstf}/YYYYMMDD.csv.gz
      6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報 -> STOREDIR/live/{odds3t,oddstf,beforeinfo}/YYYYMMDD.csv.gz
+   締切直前: [締切-2, 締切-0.5) に 3連単・単勝複勝オッズ        -> STOREDIR/live_t1/{odds3t,oddstf}/YYYYMMDD.csv.gz
+     （締切直前に自動で買う場合のオッズと、最終オッズとのずれを測るため。2026-10-11 追加）
   （6分前の保存場所・形式は撤退判定 scripts/exit_check.py が読むので変えない）
 - --model と --datadir を指定すると、6分前の取得の直後に凍結モデルで予想（各艇の1着確率と3連単120通りの確率）を計算し、
   STOREDIR/live_pred/YYYYMMDD_<ジョブID>.csv.gz に保存する（予想した時刻 predicted_at 付き。買い目は出さない）
@@ -29,7 +31,8 @@ HEAD = ["date", "jcd", "rno", "deadline", "fetched_at"]
 # (名前, 保存先ディレクトリ, 窓の開始[分前], 窓の終了[分前], 取得ページ)
 LEADS = [("t15", "live_t15", 15, 11, ("odds3t", "oddstf")),
          ("t10", "live_t10", 10, 7, ("odds3t", "oddstf")),
-         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo"))]
+         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo")),
+         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf"))]
 
 def now():
     return dt.datetime.now(JST)
