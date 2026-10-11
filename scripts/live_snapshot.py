@@ -3,8 +3,8 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
 - 当日の番組表(B)から各レースの締切予定時刻を取り、各時点の窓の中で1回ずつ取得する
     15分前: [締切-15, 締切-11) に 3連単・単勝複勝オッズ   -> STOREDIR/live_t15/{odds3t,oddstf}/YYYYMMDD.csv.gz
     10分前: [締切-10, 締切-7)  に 3連単・単勝複勝オッズ   -> STOREDIR/live_t10/{odds3t,oddstf}/YYYYMMDD.csv.gz
-     6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報 -> STOREDIR/live/{odds3t,oddstf,beforeinfo}/YYYYMMDD.csv.gz
-   締切直前: [締切-2, 締切-0.5) に 3連単・単勝複勝・3連複・2連単複オッズ -> STOREDIR/live_t1/{odds3t,oddstf,odds3f,odds2tf}/YYYYMMDD.csv.gz
+     6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報・BOATCAST のオリジナル展示 -> STOREDIR/live/{odds3t,oddstf,beforeinfo,bc_oriten}/YYYYMMDD.csv.gz
+   締切直前: [締切-2, 締切-0.5) に 3連単・単勝複勝・3連複・2連単複オッズ・3連単の票数 -> STOREDIR/live_t1/{odds3t,oddstf,odds3f,odds2tf,bc_votes}/YYYYMMDD.csv.gz
      （締切直前に自動で買う場合のオッズと、最終オッズとのずれを測るため。2026-10-11 追加）
   （6分前の保存場所・形式は撤退判定 scripts/exit_check.py が読むので変えない）
 - --model と --datadir を指定すると、6分前の取得の直後に凍結モデルで予想（各艇の1着確率と3連単120通りの確率）を計算し、
@@ -21,20 +21,31 @@ import argparse, csv, datetime as dt, glob, gzip, os, subprocess, sys, tempfile,
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, RESULT_COLS, parse_b, parse_beforeinfo, parse_odds2tf,
-                           parse_odds3f, parse_odds3t, parse_oddstf, parse_raceresult)
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, RESULT_COLS, parse_b,
+                           parse_bc_hyousu3, parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf,
+                           parse_raceresult)
 
 JST = dt.timezone(dt.timedelta(hours=9))
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 BASE = "https://www.boatrace.jp/owpc/pc/race/"
 PAGES = {"odds3t": (COMBOS, parse_odds3t), "oddstf": (ODDSTF_COLS, parse_oddstf), "beforeinfo": (BI_COLS, parse_beforeinfo),
-         "odds3f": (COMBOS_3F, parse_odds3f), "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf)}
+         "odds3f": (COMBOS_3F, parse_odds3f), "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf),
+         "bc_oriten": (BC_ORI_COLS, parse_bc_oriten), "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3)}
+BC = "https://race.boatcast.jp"
+
+def page_url(p, date, jcd, rno):
+    """BOATCAST のページは別ホスト。bc_votes は締切前の票数（bc_api_hyousu3）"""
+    if p == "bc_oriten":
+        return f"{BC}/txt/{jcd}/bc_oriten_{date}_{jcd}_{int(rno):02d}.txt"
+    if p == "bc_votes":
+        return f"{BC}/txt/{jcd}/bc_api_hyousu3_{date}_{jcd}_{int(rno):02d}.txt"
+    return f"{BASE}{p}?rno={rno}&jcd={jcd}&hd={date}"
 HEAD = ["date", "jcd", "rno", "deadline", "fetched_at"]
 # (名前, 保存先ディレクトリ, 窓の開始[分前], 窓の終了[分前], 取得ページ)
 LEADS = [("t15", "live_t15", 15, 11, ("odds3t", "oddstf")),
          ("t10", "live_t10", 10, 7, ("odds3t", "oddstf")),
-         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo")),
-         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "odds3f", "odds2tf"))]
+         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo", "bc_oriten")),
+         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "odds3f", "odds2tf", "bc_votes"))]
 
 def now():
     return dt.datetime.now(JST)
@@ -167,7 +178,7 @@ def main():
             cols, parser = PAGES[p]
             t = now()
             try:
-                html = http(f"{BASE}{p}?rno={rno}&jcd={jcd}&hd={date}").decode("utf-8", "replace")
+                html = http(page_url(p, date, jcd, rno)).decode("utf-8", "replace")
                 o = parser(html)
             except Exception as e:
                 print("NG", p, jcd, rno, repr(e), flush=True); o = None
