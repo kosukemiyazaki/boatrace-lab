@@ -4,7 +4,8 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
     15分前: [締切-15, 締切-11) に 3連単・単勝複勝オッズ   -> STOREDIR/live_t15/{odds3t,oddstf}/YYYYMMDD.csv.gz
     10分前: [締切-10, 締切-7)  に 3連単・単勝複勝オッズ   -> STOREDIR/live_t10/{odds3t,oddstf}/YYYYMMDD.csv.gz
      6分前: [締切-6,  締切-1)  に 3連単・単勝複勝オッズ・直前情報・BOATCAST のオリジナル展示 -> STOREDIR/live/{odds3t,oddstf,beforeinfo,bc_oriten}/YYYYMMDD.csv.gz
-   締切直前: [締切-2, 締切-0.5) に 3連単・単勝複勝・3連複・2連単複オッズ・3連単の票数 -> STOREDIR/live_t1/{odds3t,oddstf,odds3f,odds2tf,bc_votes}/YYYYMMDD.csv.gz
+   締切直前: [締切-2, 締切-0.5) に 3連単・単勝複勝・3連複・2連単複オッズ・3連単の票数 -> STOREDIR/live_t1/{odds3t,oddstf,odds3f,odds2tf,bc_votes,bc_votes1}/YYYYMMDD.csv.gz
+  締切45〜6秒前: [締切-0.75, 締切-0.1) に 単勝複勝オッズ・単勝複勝の票数 -> STOREDIR/live_t0/{oddstf,bc_votes1}/YYYYMMDD.csv.gz
      （締切直前に自動で買う場合のオッズと、最終オッズとのずれを測るため。2026-10-11 追加）
   （6分前の保存場所・形式は撤退判定 scripts/exit_check.py が読むので変えない）
 - --model と --datadir を指定すると、6分前の取得の直後に凍結モデルで予想（各艇の1着確率と3連単120通りの確率）を計算し、
@@ -48,7 +49,9 @@ HEAD = ["date", "jcd", "rno", "deadline", "fetched_at"]
 LEADS = [("t15", "live_t15", 15, 11, ("odds3t", "oddstf")),
          ("t10", "live_t10", 10, 7, ("odds3t", "oddstf")),
          ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo", "bc_oriten")),
-         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "bc_votes1", "bc_votes", "odds3f", "odds2tf"))]
+         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "bc_votes1", "bc_votes", "odds3f", "odds2tf")),
+         # 締切の約45〜6秒前：自動投票で最後に買う場合の判断材料（単勝・複勝オッズと単勝・複勝の票数だけ。速く取れるもの）
+         ("t0", "live_t0", 0.75, 0.1, ("bc_votes1", "oddstf"))]
 
 def now():
     return dt.datetime.now(JST)
