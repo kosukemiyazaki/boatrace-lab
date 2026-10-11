@@ -265,3 +265,78 @@ def parse_gradesch(html, hcd, year):
         rows.append(dict(hcd=hcd, grade=g.group(1) if g else "", jcd=j.group(1), start=f"{sy}{m1}{d1}", end=f"{ey}{m2}{d2}",
                          title=_TAG.sub("", t.group(1)).strip() if t else ""))
     return rows
+
+# ---------------- 3連複・2連単・2連複オッズ（IDEA-013 用） ----------------
+COMBOS_3F = [f"{a}={b}={c}" for a in range(1, 7) for b in range(a + 1, 7) for c in range(b + 1, 7)]   # 20
+COMBOS_2T = [f"{a}-{b}" for a in range(1, 7) for b in range(1, 7) if a != b]                            # 30
+COMBOS_2F = [f"{a}={b}" for a in range(1, 7) for b in range(a + 1, 7)]                                 # 15
+
+def _table_grid(table_html):
+    """<table> の tbody を、rowspan を展開した「行 × 列」のセル文字列の格子にする（colspan は使われていない前提）"""
+    rows = re.findall(r"<tr>(.*?)</tr>", table_html, re.S)
+    grid, carry = [], {}  # carry: 列 -> (残り行数, 文字列)
+    for tr in rows:
+        cells = re.findall(r'<td([^>]*)>(.*?)</td>', tr, re.S)
+        row, col, i = [], 0, 0
+        while i < len(cells) or col in carry:
+            if col in carry:
+                n, txt = carry[col]
+                row.append(txt)
+                carry[col] = (n - 1, txt) if n > 1 else None
+                if carry[col] is None:
+                    del carry[col]
+                col += 1
+                continue
+            attrs, txt = cells[i]; i += 1
+            txt = _TAG.sub("", txt).strip()
+            m = re.search(r'rowspan="(\d+)"', attrs)
+            if m and int(m.group(1)) > 1:
+                carry[col] = (int(m.group(1)) - 1, txt)
+            row.append(txt); col += 1
+        grid.append(row)
+    return grid
+
+def _tables_after(html, label):
+    """見出し label（例「3連複オッズ」）の直後の <table> の HTML"""
+    i = html.find(label)
+    if i < 0:
+        return None
+    j = html.find("<table>", i)
+    k = html.find("</table>", j)
+    return html[j:k] if j >= 0 and k >= 0 else None
+
+def parse_odds3f(html):
+    """odds3f ページ -> {"a=b=c": odds or None}（20通り）。表がなければ None。
+    表は列 = 1艇目（最小の艇番）、各列は [2艇目(rowspan), 3艇目, オッズ] の3つの小列。"""
+    t = _tables_after(html, "3連複オッズ")
+    if t is None:
+        return None
+    out = {}
+    for row in _table_grid(t):
+        for a in range(6):
+            cells = row[3 * a:3 * a + 3]
+            if len(cells) < 3 or not cells[0].isdigit() or not cells[1].isdigit():
+                continue
+            b, c = int(cells[0]), int(cells[1])
+            out[f"{a + 1}={b}={c}"] = _num(cells[2])
+    return out if len(out) == 20 else None
+
+def parse_odds2tf(html):
+    """odds2tf ページ -> {"a-b": odds（2連単30通り）, "a=b": odds（2連複15通り）}。表がなければ None。
+    各表は列 = 1艇目、各列は [2艇目, オッズ] の2つの小列。"""
+    out = {}
+    for label, sep, n in (("2連単オッズ", "-", 30), ("2連複オッズ", "=", 15)):
+        t = _tables_after(html, label)
+        if t is None:
+            return None
+        got = {}
+        for row in _table_grid(t):
+            for a in range(6):
+                cells = row[2 * a:2 * a + 2]
+                if len(cells) < 2 or not cells[0].isdigit():
+                    continue
+                got[f"{a + 1}{sep}{int(cells[0])}"] = _num(cells[1])
+        if len(got) != n:
+            return None
+        out.update(got)
+    return out
