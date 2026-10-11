@@ -21,8 +21,8 @@ import argparse, csv, datetime as dt, glob, gzip, os, subprocess, sys, tempfile,
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BC_ORI_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, RESULT_COLS, parse_b,
-                           parse_bc_hyousu3, parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf,
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, RESULT_COLS, parse_b,
+                           parse_bc_hyousu1, parse_bc_hyousu3, parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf,
                            parse_raceresult)
 
 JST = dt.timezone(dt.timedelta(hours=9))
@@ -30,7 +30,8 @@ UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 BASE = "https://www.boatrace.jp/owpc/pc/race/"
 PAGES = {"odds3t": (COMBOS, parse_odds3t), "oddstf": (ODDSTF_COLS, parse_oddstf), "beforeinfo": (BI_COLS, parse_beforeinfo),
          "odds3f": (COMBOS_3F, parse_odds3f), "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf),
-         "bc_oriten": (BC_ORI_COLS, parse_bc_oriten), "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3)}
+         "bc_oriten": (BC_ORI_COLS, parse_bc_oriten), "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3),
+         "bc_votes1": (BC_VOTE1_COLS, parse_bc_hyousu1)}
 BC = "https://race.boatcast.jp"
 
 def page_url(p, date, jcd, rno):
@@ -39,13 +40,15 @@ def page_url(p, date, jcd, rno):
         return f"{BC}/txt/{jcd}/bc_oriten_{date}_{jcd}_{int(rno):02d}.txt"
     if p == "bc_votes":
         return f"{BC}/txt/{jcd}/bc_api_hyousu3_{date}_{jcd}_{int(rno):02d}.txt"
+    if p == "bc_votes1":
+        return f"{BC}/txt/{jcd}/bc_api_hyousu1_{date}_{jcd}_{int(rno):02d}.txt"
     return f"{BASE}{p}?rno={rno}&jcd={jcd}&hd={date}"
 HEAD = ["date", "jcd", "rno", "deadline", "fetched_at"]
 # (名前, 保存先ディレクトリ, 窓の開始[分前], 窓の終了[分前], 取得ページ)
 LEADS = [("t15", "live_t15", 15, 11, ("odds3t", "oddstf")),
          ("t10", "live_t10", 10, 7, ("odds3t", "oddstf")),
          ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo", "bc_oriten")),
-         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "odds3f", "odds2tf", "bc_votes"))]
+         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "bc_votes1", "bc_votes", "odds3f", "odds2tf"))]
 
 def now():
     return dt.datetime.now(JST)

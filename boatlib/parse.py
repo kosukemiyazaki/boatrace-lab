@@ -397,3 +397,27 @@ def parse_bc_hyousu3(text):
     tot = [x for x in ls[7].split("\t") if x.strip()]
     out["votes_total"] = int(tot[0]) if tot and tot[0].strip().isdigit() else None
     return out
+
+# 単勝などの票数: /txt/{jcd}/bc_kakutei_hyousu1_...（確定）・bc_api_hyousu1_...（締切前）
+#   ブロックごとに「値の行」と「合計 0 合計」の行が交互に並ぶ。3つ目のブロック（6艇＋0埋め）が単勝、4つ目が複勝と見られる
+BC_VOTE1_COLS = ["tan_total"] + [f"tan_v{b}" for b in range(1, 7)] + ["fuku_total"] + [f"fuku_v{b}" for b in range(1, 7)]
+
+def parse_bc_hyousu1(text):
+    ls = _bc_lines(text)
+    if not ls or len(ls) < 9:
+        return None
+    blocks = []
+    rows = [l for l in ls[1:] if l.strip()]
+    for i in range(0, len(rows) - 1, 2):
+        vals = [int(x) for x in rows[i].split("\t") if x.strip().lstrip("-").isdigit()]
+        tot = [int(x) for x in rows[i + 1].split("\t") if x.strip().lstrip("-").isdigit()]
+        if not tot:
+            break
+        blocks.append((vals, tot[0]))
+    six = [(v, t) for v, t in blocks if len(v) >= 6 and all(x == 0 for x in v[6:])]
+    if len(six) < 2:
+        return None
+    (tv, tt), (fv, ft) = six[0], six[1]
+    out = {"tan_total": tt, "fuku_total": ft}
+    out.update({f"tan_v{b}": tv[b - 1] for b in range(1, 7)}); out.update({f"fuku_v{b}": fv[b - 1] for b in range(1, 7)})
+    return out
