@@ -184,13 +184,13 @@ def main():
                ll_model=float(ll_m.mean()), ll_market=float(ll_q.mean()), ll_blend=float(ll_b.mean()),
                diff_blend_minus_market=float(diff.mean()), ci95=ci, decision="地方競馬を本格的に検討" if adopt else "市場は効率的（ボートと同様）",
                band_roi_all_combos=band_roi, bets_upper_bound=bets)
-    json.dump(out, open(f"{a.out}/summary.json", "w"), ensure_ascii=False, indent=1)
+    json.dump(out, open(f"{a.out}/summary.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     md = [f"# IDEA-019 地方競馬の3連単（評価 {EVAL[0]}〜{EVAL[1]}、{len(ev)}レース）", "",
           f"3連単対数損失：モデル {out['ll_model']:.4f} / 市場（確定オッズ） {out['ll_market']:.4f} / モデル×市場 {out['ll_blend']:.4f}", "",
           f"モデル×市場 − 市場 = {diff.mean():+.4f}（95%CI {ci[0]:+.4f}〜{ci[1]:+.4f}） → **{out['decision']}**（基準 −0.02）", "",
           "全組番の回収率（オッズ帯別、2026-03〜08）", "", pd.Series(band_roi).to_frame("回収率").to_markdown(floatfmt=".3f"), "",
           "締切時オッズで買えたとしたらの上限（9通り全件、各100円、EV上位最大10点）", "", pd.DataFrame(bets).to_markdown(index=False, floatfmt=".3f")]
-    open(f"{a.out}/summary.md", "w").write("\n".join(md) + "\n"); print("\n".join(md))
+    open(f"{a.out}/summary.md", "w", encoding="utf-8").write("\n".join(md) + "\n"); print("\n".join(md))
 
 if __name__ == "__main__":
     main()

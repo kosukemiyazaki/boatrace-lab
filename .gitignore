@@ -4,3 +4,5 @@ data/
 store/
 nar_data/
 nar_out/
+.venv/
+nar_selftest/

@@ -8,7 +8,19 @@
 ```bash
 git clone https://github.com/kosukemiyazaki/boatrace-lab.git   # 既にあれば git pull
 cd boatrace-lab
-python3 -m pip install pandas pyarrow numpy scipy lightgbm
+python3 -m pip install pandas pyarrow numpy scipy lightgbm tabulate
+```
+
+## Windows の場合（PowerShell）
+```powershell
+git clone https://github.com/kosukemiyazaki/boatrace-lab.git   # git がなければ winget install Git.Git
+cd boatrace-lab
+py -m venv .venv                 # Python がなければ winget install Python.Python.3.12（入れたら PowerShell を開き直す）
+.\.venv\Scripts\Activate.ps1      # 「スクリプトの実行が無効」と出たら: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+pip install pandas pyarrow numpy scipy lightgbm tabulate
+$env:PYTHONUTF8 = "1"             # 日本語の表示・保存を UTF-8 にする（PowerShell を開くたびに必要）
+python nar\selftest.py nar_selftest; python nar\build.py --data nar_selftest; python nar\run.py --data nar_selftest --out nar_selftest\out
+python nar\fetch.py; python nar\build.py; python nar\run.py
 ```
 
 ## 1. 動作確認（作り物のデータ、1分ほど）
