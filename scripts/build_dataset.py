@@ -1,6 +1,7 @@
 """data ブランチの B/K/odds から学習用テーブルを作る。
 usage: python scripts/build_dataset.py STOREDIR OUTDIR
 出力: OUTDIR/entries.parquet (1行=1艇), races.parquet (1行=1レース), odds.parquet (1行=1レース, 120列)
+      beforeinfo.parquet / oriten.parquet / votes.parquet / odds3f.parquet / odds2tf.parquet（あれば）
 """
 import glob, gzip, os, sys
 from concurrent.futures import ProcessPoolExecutor
@@ -47,6 +48,18 @@ def main(store, out, with_odds=True):
         b = pd.concat([pd.read_csv(p, dtype={"date": str, "jcd": str}) for p in bfs], ignore_index=True)
         b.to_parquet(f"{out}/beforeinfo.parquet")
         print("beforeinfo races", len(b))
+
+    # BOATCAST のオリジナル展示（oriten.parquet）・3連単の確定票数（votes.parquet）・他券種オッズ（odds3f / odds2tf）。--no-odds のときは票数と他券種は読まない
+    for page, name, need_odds in (("bc_oriten", "oriten", False), ("bc_votes", "votes", True), ("odds3f", "odds3f", True), ("odds2tf", "odds2tf", True)):
+        if need_odds and not with_odds:
+            continue
+        fs = sorted(glob.glob(f"{store}/{page}/*.csv.gz"))
+        if fs:
+            x = pd.concat([pd.read_csv(p, dtype={"date": str, "jcd": str}) for p in fs], ignore_index=True)
+            x["jcd"] = x["jcd"].str.zfill(2)
+            x = x.drop_duplicates(["date", "jcd", "rno"], keep="last")
+            x.to_parquet(f"{out}/{name}.parquet")
+            print(name, "races", len(x), "with data", int(x.iloc[:, 3:].notna().any(axis=1).sum()))
 
 if __name__ == "__main__":
     # --no-odds: オッズを読み込まない（live のジョブ開始時など、出走表・成績・直前情報だけ必要なとき）

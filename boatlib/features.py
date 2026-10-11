@@ -203,3 +203,37 @@ def meet_motor_features(e):
 
 FEATS_C1 = FEATS_BI + ["meet_n", "meet_fin", "meet_wins", "meet_st", "meet_exh_rank"]
 FEATS_C2 = FEATS_C1 + ["mo_fin30", "mo_top2_30", "mo_fin_meet"]
+
+# ---------------- BOATCAST のオリジナル展示（IDEA-015） ----------------
+ORI_KEYS = ["lap", "half", "mawari", "straight"]
+
+def add_oriten(e, ori):
+    """ori: oriten.parquet（1行=1レース、ori_lap1..6 / ori_half / ori_mawari / ori_straight）。
+    場によって項目と計測の基準が違うので、レース内の相対値（平均との差）と順位にする。速いほど小さい値。
+    さらに選手の普段（直近10走のレース内相対値の平均）との差も加える。"""
+    key = ["date", "jcd", "rno"]
+    o = ori.copy()
+    o["date"] = o["date"].astype(str); o["jcd"] = o["jcd"].astype(str).str.zfill(2)
+    long = []
+    for b in range(1, 7):
+        cols = {f"ori_{k}{b}": f"ori_{k}" for k in ORI_KEYS if f"ori_{k}{b}" in o.columns}
+        x = o[key + list(cols)].rename(columns=cols); x["boat"] = b
+        long.append(x)
+    long = pd.concat(long, ignore_index=True)
+    e = e.merge(long, on=key + ["boat"], how="left")
+    g = e.groupby(key)
+    for k in ORI_KEYS:
+        c = f"ori_{k}"
+        if c not in e.columns:
+            e[c] = np.nan
+        e[c] = pd.to_numeric(e[c], errors="coerce")
+        e[f"o_{k}_r"] = e[c] - g[c].transform("mean")
+        e[f"o_{k}_rank"] = g[c].rank(method="min")
+    # 一周（なければ半周）の相対値の、選手の普段（直近10走）との差
+    e["o_main_r"] = e["o_lap_r"].fillna(e["o_half_r"])
+    e = e.sort_values(["toban", "date", "rno"])
+    e["h_omain10"] = e.groupby("toban")["o_main_r"].transform(lambda s: s.shift(1).rolling(10, min_periods=3).mean())
+    e["d_omain_self"] = e["o_main_r"] - e["h_omain10"]
+    return e
+
+FEATS_ORI = ["o_lap_r", "o_lap_rank", "o_half_r", "o_mawari_r", "o_mawari_rank", "o_straight_r", "o_straight_rank", "d_omain_self"]
