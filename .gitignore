@@ -6,3 +6,5 @@ nar_data/
 nar_out/
 .venv/
 nar_selftest/
+auto_data/
+auto_selftest/
