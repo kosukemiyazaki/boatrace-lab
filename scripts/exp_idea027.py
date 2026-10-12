@@ -1,5 +1,5 @@
 """IDEA-027: 締切直前の様子から確定オッズを予測して、単勝・2連複のずれを買う（docs/ideas.md の登録どおり）
-usage: python scripts/exp_idea027.py DATADIR STOREDIR [--lead t0] [--n 1200] [--out results/idea027.md]
+usage: python scripts/exp_idea027.py DATADIR STOREDIR [--lead t0] [--n 900] [--out results/idea027.md]
 - 判定時点 lead（既定 t0 = 締切45〜6秒前）までに取得したデータのみを使う
   q      : 判定時点の3連単の票数（BOATCAST bc_votes）から出した市場の確率（票の割合）→ 単勝・2連複の確率に集計
   判定時オッズ : 判定時点の票数から 0.75×合計÷票数（単勝 bc_votes1、2連複 bc_votes2）
@@ -7,7 +7,8 @@ usage: python scripts/exp_idea027.py DATADIR STOREDIR [--lead t0] [--n 1200] [--
   特徴量: 判定時の log オッズ、log q、log(q×オッズ)、票の割合、券種の合計票数(log)、3連単の合計票数(log)、券種の合計÷3連単の合計、人気順位、場、レース番号、締切時刻（時）
 - 買い方: q × 予測した確定オッズ > 閾値 {1.1, 1.2, 1.5}、各100円。払戻は確定オッズ。ただし自分の1票を足して計算し直す
   （確定票数があれば 0.75×(合計+1)÷(票数+1)、なければ 確定オッズ×票数/(票数+1) の近似）。欠場艇を含む買い目は返還
-- 日付・締切時刻の順に並べ先頭 n レース。前半 n/2 で学習、後半 n/2 で評価
+- 日付・締切時刻の順に並べ先頭 n レース。時系列の交差検証：先頭 300 レースのあと、日ごとに「その日より前の全レース」で学習してその日を評価
+  （2026-10-12 変更、データを見る前。以前は前半で学習・後半で評価の1回だけ）
 - 判定: 券種・閾値ごとに 点数200以上・回収率110%以上・日単位ブートストラップ95%CI下限100%超 → 採用候補
   比較: 予測なし（判定時オッズのまま q×判定時オッズ > 閾値）の同じ買い方
 """
@@ -20,6 +21,7 @@ from boatlib.parse import COMBOS, COMBOS_2F
 from live_eval import KEY, _read
 
 THRS = (1.1, 1.2, 1.5)
+WARM = 300  # 最初の評価日の前に必要なレース数
 RNG = np.random.default_rng(0)
 PI = np.array([int(c[0]) for c in COMBOS]); PJ = np.array([int(c[2]) for c in COMBOS])
 PAIRS = [tuple(map(int, c.split("="))) for c in COMBOS_2F]
@@ -44,7 +46,7 @@ def long_table(r, q, Od, Oc, votes, total, ctotal, cvotes, t3, kind, units, hitm
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("store")
-    ap.add_argument("--lead", default="t0"); ap.add_argument("--n", type=int, default=1200); ap.add_argument("--out", default="results/idea027.md")
+    ap.add_argument("--lead", default="t0"); ap.add_argument("--n", type=int, default=900); ap.add_argument("--warm", type=int, default=WARM); ap.add_argument("--out", default="results/idea027.md")
     a = ap.parse_args(); S = a.store; D = f"live_{a.lead}"
     v3 = before(_read(f"{S}/{D}/bc_votes/*.csv.gz")); v1 = before(_read(f"{S}/{D}/bc_votes1/*.csv.gz")); v2 = before(_read(f"{S}/{D}/bc_votes2/*.csv.gz"))
     if not len(v3) or not len(v1) or not len(v2):
@@ -93,11 +95,21 @@ def main():
     df["f_ratio"] = df["tot"] / df["t3"]; df["f_kind"] = (df["kind"] == "2連複").astype(int)
     df["f_hour"] = df["dl"].str[:2].astype(int)
     F = ["f_lo", "f_lq", "f_ev", "f_share", "f_ltot", "f_lt3", "f_ratio", "f_kind", "rank", "jcd", "rno", "f_hour"]
-    h = a.n // 2
-    tr, ev = df[df["ri"] < h], df[df["ri"] >= h].copy()
+    # 逐次の評価（時系列の交差検証）：先頭 WARM レースのあと、日ごとに「その日より前の全レース」で学習してその日を予測する
     import lightgbm as lgb
-    m = lgb.LGBMRegressor(verbose=-1).fit(tr[F], tr["y"])
-    ev["pred"] = m.predict(ev[F]); ev["oc_hat"] = ev["od"] * np.exp(ev["pred"])
+    rdays = r["date"].values; parts = []
+    for dd in sorted(set(rdays)):
+        ridx = np.where(rdays == dd)[0]
+        if ridx[0] < a.warm:
+            continue
+        tr = df[df["ri"] < ridx[0]]; te = df[df["ri"].isin(ridx)].copy()
+        if len(te) == 0:
+            continue
+        te["pred"] = lgb.LGBMRegressor(verbose=-1).fit(tr[F], tr["y"]).predict(te[F]); parts.append(te)
+    if not parts:
+        msg = f"実行前: 先頭 {WARM} レースのあとに評価できる日がない"; print(msg); open(a.out, "w").write(msg + "\n"); return
+    ev = pd.concat(parts); h = int(ev["ri"].min())
+    ev["oc_hat"] = ev["od"] * np.exp(ev["pred"])
     # 自分の1票を足した払戻オッズ
     adj = np.where(np.isfinite(ev["cv"]) & np.isfinite(ev["ctot"]) & (ev["cv"] >= 0),
                    np.floor(0.75 * (ev["ctot"] + 1) / (ev["cv"] + 1) * 10) / 10, ev["oc"] * ev["v"].clip(lower=1) / (ev["v"].clip(lower=1) + 1))
@@ -118,7 +130,7 @@ def main():
                     roi = lo = hi = np.nan
                 rows.append({"券種": kind, "方法": name, "閾値": thr, "点数": n, "的中": int(s["hit"].sum()) if n else 0, "回収率": roi, "95%CI下": lo, "95%CI上": hi,
                              "判定": "点数不足" if n < 200 else ("採用候補" if (roi >= 1.1 and lo > 1.0) else "不採用")})
-    md = [f"### IDEA-027 確定オッズの予測（判定 {a.lead}、{a.n}レース、学習 {r['date'].iloc[0]}〜{r['date'].iloc[h - 1]}、評価 {r['date'].iloc[h]}〜{r['date'].iloc[-1]}）", "",
+    md = [f"### IDEA-027 確定オッズの予測（判定 {a.lead}、{a.n}レース、日ごとの逐次評価 {r['date'].iloc[h]}〜{r['date'].iloc[-1]}、評価 {ev['ri'].nunique()}レース）", "",
           f"予測と実際の log(確定÷判定時) の相関（評価）: {corr:.3f}", "", pd.DataFrame(rows).to_markdown(index=False, floatfmt=".3f")]
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     open(a.out, "w", encoding="utf-8").write("\n".join(md) + "\n"); print("\n".join(md))
