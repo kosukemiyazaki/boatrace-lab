@@ -1,5 +1,6 @@
 """ボート券種ずれモニター（軽量版：古いスマホのブラウザでも動く1枚の HTML。データを埋め込む）
 usage: python scripts/make_dashboard_lite.py COMBOS.json OUT.html
+       python scripts/make_dashboard_lite.py COMBOS.json OUTDIR --site   （Cloudflare Pages 用の一式：index.html・manifest・アイコン）
 """
 import json, sys
 
@@ -113,13 +114,62 @@ drawGaps(); fillRaces(); drawRace();
 </script>
 """
 
+HEAD = """<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ずれモニター">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>body{margin:0;-webkit-text-size-adjust:100%} .wrap{padding-top:calc(16px + env(safe-area-inset-top, 0px));padding-bottom:calc(16px + env(safe-area-inset-bottom, 0px))}</style>
+</head><body>
+"""
+
+def png(size):
+    """アイコン（紺地に水面の白い波線3本）を PNG で作る。外部ライブラリなし"""
+    import math, struct, zlib
+    px = []
+    for y in range(size):
+        row = bytearray([0])
+        for x in range(size):
+            u, v = x / size, y / size
+            col = (31, 58, 95)
+            for k, y0 in enumerate((0.38, 0.52, 0.66)):
+                yy = y0 + 0.04 * math.sin((u * 2.2 + k * 0.5) * math.pi * 2)
+                if abs(v - yy) < 0.022 and 0.16 < u < 0.84:
+                    col = (255, 255, 255) if k != 1 else (255, 186, 73)
+            row += bytes(col)
+        px.append(bytes(row))
+    raw = b"".join(px)
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+def site(out_dir, html):
+    """Cloudflare Pages に置く一式（index.html・マニフェスト・アイコン・_headers）"""
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    open(f"{out_dir}/index.html", "w", encoding="utf-8").write(HEAD + html + "\n</body></html>\n")
+    json.dump({"name": "券種ずれモニター", "short_name": "ずれモニター", "start_url": "./", "display": "standalone", "background_color": "#f6f7f9",
+               "theme_color": "#1f3a5f", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}]},
+              open(f"{out_dir}/manifest.webmanifest", "w", encoding="utf-8"), ensure_ascii=False)
+    for n in (180, 192, 512):
+        open(f"{out_dir}/icon-{n}.png", "wb").write(png(n))
+    open(f"{out_dir}/_headers", "w").write("/*\n  X-Robots-Tag: noindex\n  Cache-Control: no-cache\n")
+
 def main():
     rows = json.load(open(sys.argv[1], encoding="utf-8"))
     import datetime
     upd = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")
     html = TEMPLATE.replace("__DATA__", json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")).replace("__UPDATED__", upd + "（日本時間）")
-    open(sys.argv[2], "w", encoding="utf-8").write(html)
-    print(sys.argv[2], len(html) // 1024, "KB")
+    if "--site" in sys.argv:  # OUT をディレクトリとして Cloudflare Pages 用の一式を書く
+        site(sys.argv[2], html); print(sys.argv[2], "(site)", len(html) // 1024, "KB")
+    else:
+        open(sys.argv[2], "w", encoding="utf-8").write(html)
+        print(sys.argv[2], len(html) // 1024, "KB")
 
 if __name__ == "__main__":
     main()

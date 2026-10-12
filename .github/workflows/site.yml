@@ -1,0 +1,37 @@
+name: site
+# 「券種ずれモニター」（スマホ用のページ）を作って Cloudflare Pages に載せる。
+# data ブランチの記録から scripts/make_dashboard_data.py → scripts/make_dashboard_lite.py --site で一式を作り、wrangler で公開する。
+# 必要なリポジトリのシークレット: CLOUDFLARE_API_TOKEN（Cloudflare Pages の編集権限）、CLOUDFLARE_ACCOUNT_ID。
+# シークレットがなければ、作るところまでで止まる（公開しない）。
+# ページにはボートレース公式の情報から作った数字が入るので、Cloudflare Access で本人だけが見られるようにする（auto ではなく利用者が設定）。
+on:
+  schedule:
+    - cron: "20 2,5,8,10,12,14 * * *"   # 日本時間 11:20 / 14:20 / 17:20 / 19:20 / 21:20 / 23:20
+  workflow_dispatch:
+    inputs:
+      days: { description: "何日分のせるか", default: "7" }
+permissions:
+  contents: read
+concurrency: { group: site, cancel-in-progress: true }
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: pip install -q pandas pyarrow numpy
+      - run: python3 scripts/build_dataset.py store ds
+      - run: python3 scripts/make_dashboard_data.py ds store combos.json --days ${{ inputs.days || '7' }}
+      - run: python3 scripts/make_dashboard_lite.py combos.json site --site
+      - name: deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare のシークレットが未設定のため公開しない（ページは作成済み）"; exit 0
+          fi
+          npx --yes wrangler@3.114.0 pages project create zure-monitor --production-branch=main 2>/dev/null || true
+          npx --yes wrangler@3.114.0 pages deploy site --project-name=zure-monitor --branch=main --commit-dirty=true
