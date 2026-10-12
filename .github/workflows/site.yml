@@ -3,7 +3,8 @@ name: site
 # data ブランチの記録から scripts/make_dashboard_data.py → scripts/make_dashboard_lite.py --site で一式を作り、wrangler で公開する。
 # 必要なリポジトリのシークレット: CLOUDFLARE_API_TOKEN（Cloudflare Pages の編集権限）、CLOUDFLARE_ACCOUNT_ID。
 # シークレットがなければ、作るところまでで止まる（公開しない）。
-# ページにはボートレース公式の情報から作った数字が入るので、Cloudflare Access で本人だけが見られるようにする（auto ではなく利用者が設定）。
+# ページにはボートレース公式の情報から作った数字が入るので、本人だけが見られるようにする：functions/_middleware.js がログインを挟む。
+# パスワードはリポジトリのシークレット SITE_PASSWORD（20文字以上）。未設定の間、ページは閉じたままになる。
 on:
   schedule:
     - cron: "20 2,5,8,10,12,14 * * *"   # 日本時間 11:20 / 14:20 / 17:20 / 19:20 / 21:20 / 23:20
@@ -29,6 +30,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
         run: |
           # 貼り付けで入りがちな空白・改行を取り除く
           export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
@@ -51,4 +53,12 @@ jobs:
               print("verify: 失敗", getattr(e, "code", ""), (e.read()[:300].decode("utf-8", "replace") if hasattr(e, "read") else e))
           PY
           npx --yes wrangler@3.114.0 pages project create zure-monitor --production-branch=main 2>/dev/null || true
+          # ログイン用：パスワードの SHA-256 だけを Pages のシークレットに置く（functions/_middleware.js が照合する）。
+          # 未設定・20文字未満のときは登録しない。その場合ページは閉じたままになる（値も長さも出さない）。
+          SITE_PASSWORD="$(printf '%s' "$SITE_PASSWORD" | tr -d '\r\n')"
+          if [ "${#SITE_PASSWORD}" -ge 20 ]; then
+            printf '%s' "$SITE_PASSWORD" | sha256sum | cut -d' ' -f1 | npx --yes wrangler@3.114.0 pages secret put SITE_PASSWORD_SHA256 --project-name=zure-monitor
+          else
+            echo "SITE_PASSWORD が未設定か 20 文字未満のため、ログイン用の値は登録しない（未登録ならページは閉じたまま）"
+          fi
           npx --yes wrangler@3.114.0 pages deploy site --project-name=zure-monitor --branch=main --commit-dirty=true
