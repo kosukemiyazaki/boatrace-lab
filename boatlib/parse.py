@@ -421,3 +421,29 @@ def parse_bc_hyousu1(text):
     out = {"tan_total": tt, "fuku_total": ft}
     out.update({f"tan_v{b}": tv[b - 1] for b in range(1, 7)}); out.update({f"fuku_v{b}": fv[b - 1] for b in range(1, 7)})
     return out
+
+BC_VOTE2_COLS = ["e2t_total"] + [f"e2t_v{c}" for c in COMBOS_2T] + ["q2f_total"] + [f"q2f_v{c}" for c in COMBOS_2F]
+
+def parse_bc_hyousu2(text):
+    """BOATCAST bc_api_hyousu2 / bc_kakutei_hyousu2（2連単・2連複の票数）-> dict。データがなければ None
+    行2〜7: 1着の艇ごとに、2着の艇（自艇を除く昇順）5つの票数＋0。行8: 2連単の合計（総数・返還・差引）。
+    行9: 2連複15通り（1=2,1=3,…,5=6 の順）、行10: 2連複の合計。0.75×合計÷票数 が公式オッズと一致することを確認済み（2026-10-10 桐生1R）"""
+    ls = _bc_lines(text)
+    if not ls or len(ls) < 10:
+        return None
+    rows = ls[1:]
+    try:
+        out = {}
+        for i in range(1, 7):
+            vals = [int(x) for x in rows[i - 1].split("\t")[1:] if x.strip().lstrip("-").isdigit()]
+            js = [j for j in range(1, 7) if j != i]
+            for j, v in zip(js, vals[:5]):
+                out[f"e2t_v{i}-{j}"] = v
+        out["e2t_total"] = int(rows[6].split("\t")[0])
+        q = [int(x) for x in rows[7].split("\t") if x.strip().lstrip("-").isdigit()]
+        for c, v in zip(COMBOS_2F, q[:15]):
+            out[f"q2f_v{c}"] = v
+        out["q2f_total"] = int(rows[8].split("\t")[0])
+    except (ValueError, IndexError):
+        return None
+    return out if len(out) == len(BC_VOTE2_COLS) else None

@@ -17,7 +17,7 @@ import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, ti
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, PCEXPECT_COLS, parse_bc_hyousu1, parse_bc_hyousu3,
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE2_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, PCEXPECT_COLS, parse_bc_hyousu1, parse_bc_hyousu2, parse_bc_hyousu3,
                            parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf, parse_pcexpect, race_keys_k)
 
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
@@ -32,6 +32,7 @@ PAGES = {  # page -> (列名, パーサ)
     "bc_oriten": (BC_ORI_COLS, parse_bc_oriten),        # BOATCAST オリジナル展示（一周・まわり足・直線。IDEA-015）
     "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3),       # BOATCAST 3連単の確定票数（売上・自分の賭けの影響）
     "bc_votes1": (BC_VOTE1_COLS, parse_bc_hyousu1),     # BOATCAST 単勝・複勝の確定票数（IDEA-022：単勝の売上と自分の賭けの影響）
+    "bc_votes2": (BC_VOTE2_COLS, parse_bc_hyousu2),     # BOATCAST 2連単・2連複の確定票数（IDEA-023：2連複の売上と自分の賭けの影響）
 }
 BC = "https://race.boatcast.jp/txt"
 def page_url(page, date, jcd, rno):
@@ -41,6 +42,8 @@ def page_url(page, date, jcd, rno):
         return f"{BC}/{jcd}/bc_kakutei_hyousu3_{date}_{jcd}_{int(rno):02d}.txt"
     if page == "bc_votes1":
         return f"{BC}/{jcd}/bc_kakutei_hyousu1_{date}_{jcd}_{int(rno):02d}.txt"
+    if page == "bc_votes2":
+        return f"{BC}/{jcd}/bc_kakutei_hyousu2_{date}_{jcd}_{int(rno):02d}.txt"
     return f"{BASE}{page}?rno={rno}&jcd={jcd}&hd={date}"
 
 class Pacer:
