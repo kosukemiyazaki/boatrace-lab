@@ -33,6 +33,8 @@ jobs:
           # 貼り付けで入りがちな空白・改行を取り除く
           export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          # 作成直後の画面の確認用コマンド（curl … "Authorization: Bearer <token>"）ごと貼られた場合は、トークンの部分だけを取り出す
+          case "$CLOUDFLARE_API_TOKEN" in *Bearer*) export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sed -E 's/.*Bearer([A-Za-z0-9_-]+).*/\1/')";; esac
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "Cloudflare のシークレットが未設定のため公開しない（ページは作成済み）"; exit 0
           fi
