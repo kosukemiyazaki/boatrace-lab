@@ -66,5 +66,23 @@ jobs:
                       time.sleep(2)
                       with op.open(urllib.request.Request(f"{B}/race_info/{ep}", data=body, headers=hdr), timeout=60) as r: j = json.loads(r.read().decode("utf-8", "replace"))
                       print(pc, dd, ep, "errors:", j.get("errors"), "shape:", json.dumps(shape(j.get("body")), ensure_ascii=False)[:2500])
+                      mask = lambda t: re.sub(r"\d", "9", str(t))
+                      bd = j.get("body")
+                      if ep == "Odds" and isinstance(bd, dict):
+                          print("Odds top keys:", list(bd.keys()))
+                          for kk in bd:
+                              if kk.endswith("OddsList"):
+                                  vv = bd[kk]; first = vv
+                                  while isinstance(first, dict) and first: first = next(iter(first.values()))
+                                  print(" ", kk, "depth sample (masked):", mask(first), "type", type(vv).__name__, "n_top", len(vv) if hasattr(vv, "__len__") else "")
+                      if ep in ("RaceResult", "RaceRefund"):
+                          ri = bd.get("refundInfo") if isinstance(bd, dict) else (bd[0].get("refundInfo") if bd else None)
+                          if ri:
+                              for kk, vv in ri.items():
+                                  if isinstance(vv, dict) and vv.get("list"):
+                                      print(" ", kk, vv.get("typeName") and "typeName", "list[0] keys:", list(vv["list"][0].keys()), "masked:", mask(vv["list"][0]))
+                                  else:
+                                      print(" ", kk, type(vv).__name__, mask(vv)[:200])
+
                   except Exception as e:
                       print(pc, dd, ep, "NG", e)
