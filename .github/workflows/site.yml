@@ -36,5 +36,17 @@ jobs:
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "Cloudflare のシークレットが未設定のため公開しない（ページは作成済み）"; exit 0
           fi
+          # 値は出さずに形だけ確かめる（長さ・使われている文字の種類・Cloudflare の検証結果）
+          python3 - <<'PY'
+          import os, re, json, urllib.request
+          t = os.environ["CLOUDFLARE_API_TOKEN"]; a = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+          print("token: 長さ", len(t), "／英数字と _ - だけか", bool(re.fullmatch(r"[A-Za-z0-9_-]+", t)))
+          print("account id: 長さ", len(a), "／16進32桁か", bool(re.fullmatch(r"[0-9a-f]{32}", a)))
+          try:
+              r = urllib.request.urlopen(urllib.request.Request("https://api.cloudflare.com/client/v4/user/tokens/verify", headers={"Authorization": "Bearer " + t}), timeout=30)
+              print("verify:", json.loads(r.read()).get("result", {}).get("status"))
+          except Exception as e:
+              print("verify: 失敗", getattr(e, "code", ""), (e.read()[:300].decode("utf-8", "replace") if hasattr(e, "read") else e))
+          PY
           npx --yes wrangler@3.114.0 pages project create zure-monitor --production-branch=main 2>/dev/null || true
           npx --yes wrangler@3.114.0 pages deploy site --project-name=zure-monitor --branch=main --commit-dirty=true
