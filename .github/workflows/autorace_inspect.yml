@@ -46,25 +46,25 @@ jobs:
                       print(ep, "identifiers nearby:", sorted(set(re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b", w)))[:80])
           except Exception as e:
               print("race.js NG", e)
-          # 推定したパラメータで JSON を試す（キー名と件数だけ表示）
-          codes = {"kawaguchi": 2, "isesaki": 3, "hamamatsu": 5, "iizuka": 6, "sanyou": 7}
-          variants = [{"placeCode": codes.get(v, 5), "raceDate": d, "raceNo": 1}, {"placeCode": f"0{codes.get(v, 5)}", "raceDate": d, "raceNo": 1},
-                      {"placeCode": codes.get(v, 5), "raceDate": d.replace("-", ""), "raceNo": 1}, {"placeCode": codes.get(v, 5), "raceDate": d.replace("-", "/"), "raceNo": "01"}]
-          for ep, var in [(e, x) for e in ("Program", "Odds", "RaceResult", "RaceRefund") for x in variants]:
-              body = urllib.parse.urlencode(var).encode()
-              hdr = dict(UA, **{"X-CSRF-TOKEN": tok[0] if tok else "", "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded", "Referer": f"{B}/race_info/Live/{v}"})
-              try:
-                  time.sleep(2)
-                  with op.open(urllib.request.Request(f"{B}/race_info/{ep}", data=body, headers=hdr), timeout=60) as r: t = r.read().decode("utf-8", "replace")
+          # 今日の開催を調べ（GET、XML）、開催場・日付で各 JSON の形を確かめる（キー名と件数だけ表示）
+          x = get(f"{B}/race_info/XML/Hold/Today")
+          print("Hold/Today tags:", sorted(set(re.findall(r"<([A-Za-z_]+)[ >]", x)))[:40])
+          pcs = sorted(set(re.findall(r"<placeCode>(\d+)</placeCode>", x))) or sorted(set(re.findall(r"placeCode\D{0,5}(\d+)", x)))
+          ds = sorted(set(re.findall(r"(20\d\d-\d\d-\d\d)", x)))
+          print("placeCodes today:", pcs, "dates:", ds[:5])
+          def shape(o, dep=0):
+              if isinstance(o, dict): return {k: shape(x, dep + 1) for k, x in list(o.items())[:40]} if dep < 4 else "dict"
+              if isinstance(o, list): return [f"list[{len(o)}]", shape(o[0], dep + 1) if o else None]
+              return type(o).__name__
+          tests = [(int(pcs[0]) if pcs else 5, ds[0] if ds else d)]
+          tests.append((tests[0][0], "2024-06-01"))
+          for pc, dd in tests:
+              for ep in ("Program", "Odds", "RaceResult", "RaceRefund"):
+                  body = urllib.parse.urlencode({"placeCode": pc, "raceDate": dd, "raceNo": 1}).encode()
+                  hdr = dict(UA, **{"X-CSRF-TOKEN": tok[0] if tok else "", "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded", "Referer": f"{B}/race_info/Live/{v}"})
                   try:
-                      j = json.loads(t)
-                      def shape(o, dep=0):
-                          if isinstance(o, dict): return {k: shape(x, dep + 1) for k, x in list(o.items())[:25]} if dep < 3 else "dict"
-                          if isinstance(o, list): return [f"list[{len(o)}]", shape(o[0], dep + 1) if o else None]
-                          return type(o).__name__
-                      print(ep, var, "errors:", j.get("errors") if isinstance(j, dict) else None)
-                      print(ep, "JSON shape:", json.dumps(shape(j), ensure_ascii=False)[:1500])
-                  except Exception:
-                      print(ep, "not JSON, length", len(t), t[:80].replace("\n", " ") if t.startswith("<") is False else "(html)")
-              except Exception as e:
-                  print(ep, "NG", e)
+                      time.sleep(2)
+                      with op.open(urllib.request.Request(f"{B}/race_info/{ep}", data=body, headers=hdr), timeout=60) as r: j = json.loads(r.read().decode("utf-8", "replace"))
+                      print(pc, dd, ep, "errors:", j.get("errors"), "shape:", json.dumps(shape(j.get("body")), ensure_ascii=False)[:2500])
+                  except Exception as e:
+                      print(pc, dd, ep, "NG", e)
