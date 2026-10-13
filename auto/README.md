@@ -33,3 +33,21 @@ git push
 ## 判定（docs/ideas.md の IDEA-029）
 「モデル×市場」の3連単対数損失が、最終オッズの市場単独より 0.02 以上小さく、95%信頼区間が0をまたがない → オートレースを本格的に検討。
 控除率は 30%（ボートは 25%）なので、回収率 110% には「自分の確率 ÷ 市場の確率」が約 1.57 倍以上の買い目が必要。
+
+## 締切前のオッズを時間帯別に記録する（IDEA-030、`auto/live.py`）
+レースのある時間帯に PC で動かしておくと、発売中のレースのオッズと券種別の売上を、締切の 20・15・10・6・4・2・1分前、30・10秒前、締切1分後に保存します（`auto_data/live/`）。
+アクセスは「本日の開催」を30秒（締切が近いときは15秒）ごとに1回と、1レースにつき Odds を約10回。間隔は2秒以上あけます。
+```powershell
+cd boatrace-lab
+git pull
+.\.venv\Scripts\Activate.ps1
+$env:PYTHONUTF8 = "1"
+python auto\live.py --once     # 動作確認：いま発売中のレースと締切時刻が出る
+python auto\live.py            # 記録（その日の最終レースが終わるまで。ミッドナイト開催も 24:30 まで動く）
+```
+- 毎日自動で始めるには、タスク スケジューラで「毎日 9:30 に `.venv\Scripts\python.exe auto\live.py`（開始フォルダ＝boatrace-lab）」を登録。PC がスリープしないように設定。
+- 翌日以降に、その日の最終オッズ・払戻を取ってから集計：
+```powershell
+python auto\fetch.py --from 2026-10-13 --to 2026-10-13
+python auto\live_summary.py    # results\auto_live_summary.md（集計値のみ。共有してよい）
+```
