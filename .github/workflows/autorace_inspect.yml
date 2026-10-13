@@ -46,43 +46,27 @@ jobs:
                       print(ep, "identifiers nearby:", sorted(set(re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b", w)))[:80])
           except Exception as e:
               print("race.js NG", e)
-          # 今日の開催を調べ（GET、XML）、開催場・日付で各 JSON の形を確かめる（キー名と件数だけ表示）
+          # 今日の開催（XML）のタグ構造と、出走表・オッズの「選手一覧以外」のキー（締切時刻がどこにあるか）を調べる。値は数字を 9 に置き換えて表示
+          mask = lambda t: re.sub(r"\d", "9", str(t))
           x = get(f"{B}/race_info/XML/Hold/Today")
-          print("Hold/Today tags:", sorted(set(re.findall(r"<([A-Za-z_]+)[ >]", x)))[:40])
+          print("Hold/Today 先頭（数字は9に置換）:", mask(x[:1500]))
           pcs = sorted(set(re.findall(r"<placeCode>(\d+)</placeCode>", x))) or sorted(set(re.findall(r"placeCode\D{0,5}(\d+)", x)))
           ds = sorted(set(re.findall(r"(20\d\d-\d\d-\d\d)", x)))
-          print("placeCodes today:", pcs, "dates:", ds[:5])
-          def shape(o, dep=0):
-              if isinstance(o, dict): return {k: shape(x, dep + 1) for k, x in list(o.items())[:40]} if dep < 4 else "dict"
-              if isinstance(o, list): return [f"list[{len(o)}]", shape(o[0], dep + 1) if o else None]
-              return type(o).__name__
-          tests = [(int(pcs[0]) if pcs else 5, ds[0] if ds else d)]
-          tests.append((tests[0][0], "2024-06-01"))
-          for pc, dd in tests:
-              for ep in ("Program", "Odds", "RaceResult", "RaceRefund"):
-                  body = urllib.parse.urlencode({"placeCode": pc, "raceDate": dd, "raceNo": 1}).encode()
-                  hdr = dict(UA, **{"X-CSRF-TOKEN": tok[0] if tok else "", "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded", "Referer": f"{B}/race_info/Live/{v}"})
+          import datetime as _dt
+          today = (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).strftime("%Y-%m-%d")
+          print("placeCodes:", pcs, "today:", today)
+          hdr = dict(UA, **{"X-CSRF-TOKEN": tok[0] if tok else "", "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded", "Referer": f"{B}/race_info/Live/{v}"})
+          for pc in pcs[:2]:
+              for ep in ("Program", "Odds"):
+                  body = urllib.parse.urlencode({"placeCode": int(pc), "raceDate": today, "raceNo": 1}).encode()
                   try:
                       time.sleep(2)
                       with op.open(urllib.request.Request(f"{B}/race_info/{ep}", data=body, headers=hdr), timeout=60) as r: j = json.loads(r.read().decode("utf-8", "replace"))
-                      print(pc, dd, ep, "errors:", j.get("errors"), "shape:", json.dumps(shape(j.get("body")), ensure_ascii=False)[:2500])
-                      mask = lambda t: re.sub(r"\d", "9", str(t))
                       bd = j.get("body")
-                      if ep == "Odds" and isinstance(bd, dict):
-                          print("Odds top keys:", list(bd.keys()))
-                          for kk in bd:
-                              if kk.endswith("OddsList"):
-                                  vv = bd[kk]; first = vv
-                                  while isinstance(first, dict) and first: first = next(iter(first.values()))
-                                  print(" ", kk, "depth sample (masked):", mask(first), "type", type(vv).__name__, "n_top", len(vv) if hasattr(vv, "__len__") else "")
-                      if ep in ("RaceResult", "RaceRefund"):
-                          ri = bd.get("refundInfo") if isinstance(bd, dict) else (bd[0].get("refundInfo") if bd else None)
-                          if ri:
-                              for kk, vv in ri.items():
-                                  if isinstance(vv, dict) and vv.get("list"):
-                                      print(" ", kk, vv.get("typeName") and "typeName", "list[0] keys:", list(vv["list"][0].keys()), "masked:", mask(vv["list"][0]))
-                                  else:
-                                      print(" ", kk, type(vv).__name__, mask(vv)[:200])
-
+                      print(pc, ep, "errors:", j.get("errors"), "top keys:", list(bd.keys()) if isinstance(bd, dict) else type(bd).__name__)
+                      if isinstance(bd, dict):
+                          for k2, v2 in bd.items():
+                              if k2 in ("playerList",) or k2.endswith("OddsList"): continue
+                              print("   ", k2, "=", mask(json.dumps(v2, ensure_ascii=False))[:600])
                   except Exception as e:
-                      print(pc, dd, ep, "NG", e)
+                      print(pc, ep, "NG", e)
