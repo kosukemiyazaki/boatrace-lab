@@ -80,6 +80,7 @@ def main():
     day = race_day(now()); end = at(day, a.until) if a.until != "24:00" else dt.datetime.combine(day + dt.timedelta(days=1), dt.time(0, 30), JST)
     taken = {}      # (pc, rno) → 取った時間帯の集合
     pending = {}    # (pc, rno) → (締切, 発走, 情報)：締切後の1回を取るまで覚えておく
+    after_done = set()  # 締切後の1回を取り終えた (pc, rno)。公式の表示は次のレースに移るまで同じレースのままなので、取り直さない
     n_req = 0; last_print = 0
     print(f"開始 {now():%H:%M:%S}（開催日 {day}、終了 {end:%m-%d %H:%M}、間隔 {a.interval} 秒）", flush=True)
     while now() < end:
@@ -97,7 +98,10 @@ def main():
             return
         t = now()
         for pc, rno, dl, st, v in ts:
-            k = (pc, rno); pending[k] = (dl, st, v)
+            k = (pc, rno)
+            if k in after_done:
+                continue
+            pending[k] = (dl, st, v)
             sec = (dl - t).total_seconds()
             name = slot_for(sec, taken.setdefault(k, set()))
             if name is None or sec < -30:
@@ -117,7 +121,7 @@ def main():
                     dump(f"{a.data}/live/{day}/{pc}_{rno:02d}/{AFTER[0]}.json.gz",
                          {"fetched_at": now().isoformat(timespec="seconds"), "lead": AFTER[0], "sec_left": round((dl - now()).total_seconds()),
                           "deadline": dl.isoformat(), "start": st.isoformat() if st else None, "hold": v, "odds": o["body"]})
-                del pending[k]
+                del pending[k]; after_done.add(k)
         if time.time() - last_print > 600:
             last_print = time.time()
             print(f"{now():%H:%M} 発売中 {', '.join(f'場{pc}-{r}R' for pc, r, *_ in ts) or 'なし'}／取ったレース {len(taken)}／リクエスト {n_req}", flush=True)
