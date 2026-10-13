@@ -50,7 +50,7 @@ def main():
         b = json.load(gzip.open(p, "rt", encoding="utf-8"))
         for x in b.get("playerList") or []:
             riders.append({**key, "car": x.get("carNo"), "player": x.get("playerCode"), "handicap": num(x.get("handicap")), "trial": num(x.get("trialTime")),
-                           "trial_retry": x.get("trialRetryCode"), "absent": x.get("absent") is not None, "ai": x.get("aiExpectCode"),
+                           "trial_retry": x.get("trialRetryCode"), "absent": x.get("absent") is not None, "ai": None if x.get("aiExpectCode") is None else str(x.get("aiExpectCode")),  # 公式データでは文字列と整数が混ざっている
                            "race_dev": num(x.get("raceDev")), "st_ave": num(x.get("stAve")), "gt_trial_ave": num(x.get("goodTrackTraialAve")),
                            "gt_race_ave": num(x.get("goodTrackRaceAve")), "gt_race_best": num(x.get("goodTrackRaceBest")), "graduation": x.get("graduationCode")})
         sales = b.get("salesInfo") or {}
