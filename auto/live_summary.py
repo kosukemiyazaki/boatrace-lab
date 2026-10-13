@@ -47,6 +47,31 @@ def evs(b, q, kplace):
             out.append(("複勝", c, qp, plc[c]))
     return out
 
+def own_impact(paid_w, paid_p, pool_w, pool_p, rate):
+    """自分が当たり車に100円（1票）を足していたら、払戻（100円あたり）はいくらになったか。
+    単勝: 当たり車の票数 v = 払戻に回る額 N ÷ 払戻倍率 r → r' = rate×(P+1) ÷ (v+1)
+    複勝: 当たり車それぞれ (r_j − 1)×v_j = (N − W) ÷ k が等しい（W = 当たり車の票数の合計、k = 当たり車の数）ことから v_j を出し、
+          1票足したあとの r_j' = 1 + (rate×(P+1) − (W+1)) ÷ (k×(v_j+1))。払戻率 rate は最終の単勝オッズから推定（複勝も同じと仮定）
+    """
+    ow, op = {}, {}
+    if pool_w and np.isfinite(rate):
+        N = rate * pool_w
+        for c, pay in paid_w.items():
+            r = (pay or 0) / 100
+            if r > 0:
+                v = N / r; ow[c] = max(100.0, 100 * rate * (pool_w + 1) / (v + 1))
+    if pool_p and np.isfinite(rate) and paid_p:
+        rs = {c: (pay or 0) / 100 for c, pay in paid_p.items()}
+        if all(r > 1 for r in rs.values()):
+            k = len(rs); N = rate * pool_p
+            cc = N / (k + sum(1 / (r - 1) for r in rs.values()))
+            v = {c: cc / (r - 1) for c, r in rs.items()}; W = sum(v.values())
+            for c in rs:
+                op[c] = max(100.0, 100 * (1 + (rate * (pool_p + 1) - (W + 1)) / (k * (v[c] + 1))))
+        else:
+            op = {c: pay for c, pay in paid_p.items()}  # 元返しなど：調整しない
+    return ow, op
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--data", default="auto_data"); ap.add_argument("--out", default="results/auto_live_summary.md")
     a = ap.parse_args()
@@ -71,6 +96,8 @@ def main():
                     paid_p = {str(x.get("carNo")): num(x.get("refund")) for x in ((ri.get("fns") or {}).get("list") or [])}
         kplace = max(len(paid_p), 2) if paid_p else None
         fs, qf = sales_of(final), tri_q(final)
+        rate = 1 / sum(1 / v for v in odds_of(final, "tnsOddsList", 1).values() if v and v > 0) if odds_of(final, "tnsOddsList", 1) else np.nan
+        own_w, own_p = own_impact(paid_w, paid_p, fs.get("tns"), fs.get("fns"), rate)
         fo = {kind: odds_of(final, lk, 1) for lk, (kind, d) in KINDS.items() if d == 1}
         for lead, s in snaps.items():
             b = s["odds"]; ss = sales_of(b)
@@ -85,7 +112,8 @@ def main():
                 qc = sum(p for k, p in qf.items() if (k.split("-")[0] == c if kind == "単勝" else c in k.split("-")[:kplace]))
                 paid = (paid_w if kind == "単勝" else paid_p)
                 cand.append({"lead": lead, "kind": kind, "day": day, "ev_lead": qq * o, "ev_close": qc * oc if oc else np.nan,
-                             "drift": oc / o if oc else np.nan, "settled": bool(paid), "ret": (paid.get(c, 0.0) or 0.0) if paid else np.nan})
+                             "drift": oc / o if oc else np.nan, "settled": bool(paid), "ret": (paid.get(c, 0.0) or 0.0) if paid else np.nan,
+                             "ret_own": ((own_w if kind == "単勝" else own_p).get(c, 0.0) or 0.0) if paid else np.nan})
     V = pd.DataFrame(vis)
     md = [f"# オートレース：締切前の時間帯別（auto/live.py、{len(races)} レース、最終オッズあり {n_final}）", ""]
     if len(V):
@@ -101,7 +129,8 @@ def main():
             st = g[g["settled"]]
             rows.append({"時間帯": lead, "券種": kind, "点数": len(g), "その時点の期待値": g["ev_lead"].mean(), "最終の期待値": g["ev_close"].mean(),
                          "オッズ 最終÷その時点（中央値）": g["drift"].median(), "払戻あり": len(st),
-                         "回収率（最終オッズで払戻・参考）": st["ret"].sum() / (100 * len(st)) if len(st) else np.nan})
+                         "回収率（最終オッズで払戻・参考）": st["ret"].sum() / (100 * len(st)) if len(st) else np.nan,
+                         "回収率（自分の100円込み）": st["ret_own"].sum() / (100 * len(st)) if len(st) else np.nan})
         R = pd.DataFrame(rows); R["o"] = R["時間帯"].map({k: i for i, k in enumerate(LEAD_ORDER)})
         md += ["## 2. 3連単の市場から見た単勝・複勝のずれ（その時点で 確率×オッズ > 1.1、参考）", "",
                R.sort_values(["券種", "o"]).drop(columns="o").to_markdown(index=False, floatfmt=".3f"), ""]
