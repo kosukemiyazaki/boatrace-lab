@@ -16,7 +16,7 @@ usage: python scripts/live_snapshot.py STOREDIR --until HH:MM [--date YYYYMMDD]
 - 取得時刻 fetched_at 付き。保存ファイルはジョブごとに分ける（YYYYMMDD_<ジョブID>.csv.gz）。
   ジョブが重なっても上書きし合わない。同じ日の他のファイルにあるレースは取得済みとして飛ばす。
   読む側（exit_check.py, compare_live.py）は日付のファイルをまとめて読み、重複を除く
-- 15分ごとと終了時に scripts/push_store.sh で data ブランチへ push（--no-push で無効）
+- 5分ごとと終了時に scripts/push_store.sh で data ブランチへ push（--no-push で無効）
 時刻はすべて日本時間。
 """
 import argparse, csv, datetime as dt, glob, gzip, os, subprocess, sys, tempfile, threading, time, urllib.request
@@ -277,7 +277,7 @@ def main():
                     fut.add_done_callback(lambda f, k=k: f.result() and res_done.add(k))
             if all(t >= d + dt.timedelta(minutes=60) or (j, n) in res_done for j, n, d in sched):
                 break
-            if time.monotonic() - last_push > 900:
+            if time.monotonic() - last_push > 300:  # 5分ごと（締切15分前のオッズを締切の5分以上前に共有するため）
                 push(f"live {date} {t:%H:%M}"); last_push = time.monotonic()
             time.sleep(10)
     stop.set()
