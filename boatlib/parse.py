@@ -341,6 +341,28 @@ def parse_odds2tf(html):
         out.update(got)
     return out
 
+ODDSK_COLS = [f"wide_lo{c}" for c in COMBOS_2F] + [f"wide_hi{c}" for c in COMBOS_2F]
+
+def parse_oddsk(html):
+    """oddsk ページ（拡連複＝ワイド）-> {"wide_lo1=2": 下限, "wide_hi1=2": 上限, ...}（15組）。表がなければ None。
+    表の各行は2艇目 b、行の中に [b, "下限-上限"] の組が 1艇目 a = 1, 2, ... の順に左から詰めて並ぶ。"""
+    t = _tables_after(html, "拡連複オッズ")
+    if t is None:
+        return None
+    out = {}
+    for row in _table_grid(t):
+        cells = [c for c in row if c != ""]
+        for a, k in enumerate(range(0, len(cells) - 1, 2), start=1):
+            if not cells[k].isdigit():
+                continue
+            b = int(cells[k]); v = cells[k + 1]
+            if a >= b:
+                continue
+            m = re.match(r"\s*([\d.]+)\s*-\s*([\d.]+)", v)
+            lo, hi = (float(m.group(1)), float(m.group(2))) if m else (_num(v), _num(v))
+            out[f"wide_lo{a}={b}"] = lo; out[f"wide_hi{a}={b}"] = hi
+    return out if len(out) == 30 else None
+
 # ---------------- BOATCAST（race.boatcast.jp）のテキストデータ（IDEA-015・売上） ----------------
 # オリジナル展示: /txt/{jcd}/bc_oriten_{YYYYMMDD}_{jcd}_{RR}.txt
 #   1行目 "data="、2行目 "1<TAB>項目数"、3行目 項目名（一　周 / まわり足 / 直　線 / 半周 など、場によって違う）、4〜9行目 艇ごとの値
