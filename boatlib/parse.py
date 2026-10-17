@@ -363,6 +363,16 @@ def parse_oddsk(html):
             out[f"wide_lo{a}={b}"] = lo; out[f"wide_hi{a}={b}"] = hi
     return out if len(out) == 30 else None
 
+STAB_COLS = ["stab", "dist_hdr"]
+
+def parse_stab(html):
+    """beforeinfo ページの見出し -> {"stab": 安定板使用なら 1、なければ 0, "dist_hdr": 見出しの距離（m、周回短縮なら 1200 など）}。
+    レースのページでなければ None"""
+    if not html or "スタート展示" not in html:
+        return None
+    m = re.search(r"(\d{3,4})m", re.sub(r"<[^>]+>", " ", html[:60000]))
+    return {"stab": 1 if "安定板使用" in html else 0, "dist_hdr": int(m.group(1)) if m else None}
+
 # ---------------- BOATCAST（race.boatcast.jp）のテキストデータ（IDEA-015・売上） ----------------
 # オリジナル展示: /txt/{jcd}/bc_oriten_{YYYYMMDD}_{jcd}_{RR}.txt
 #   1行目 "data="、2行目 "1<TAB>項目数"、3行目 項目名（一　周 / まわり足 / 直　線 / 半周 など、場によって違う）、4〜9行目 艇ごとの値

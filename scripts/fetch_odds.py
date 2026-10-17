@@ -17,8 +17,8 @@ import argparse, csv, datetime as dt, glob, gzip, os, signal, sys, threading, ti
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE2_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSK_COLS, ODDSTF_COLS, PCEXPECT_COLS, parse_bc_hyousu1, parse_bc_hyousu2, parse_bc_hyousu3,
-                           parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddsk, parse_oddstf, parse_pcexpect, race_keys_k)
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE2_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSK_COLS, ODDSTF_COLS, STAB_COLS, PCEXPECT_COLS, parse_bc_hyousu1, parse_bc_hyousu2, parse_bc_hyousu3,
+                           parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddsk, parse_oddstf, parse_pcexpect, parse_stab, race_keys_k)
 
 UA = {"User-Agent": "Mozilla/5.0 (boatrace-lab research)"}
 BASE = "https://www.boatrace.jp/owpc/pc/race/"
@@ -29,7 +29,8 @@ PAGES = {  # page -> (列名, パーサ)
     "pcexpect": (PCEXPECT_COLS, parse_pcexpect),
     "odds3f": (COMBOS_3F, parse_odds3f),            # 締切時 3連複オッズ（IDEA-013）
     "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf),
-    "oddsk": (ODDSK_COLS, parse_oddsk),                  # 締切時 拡連複（ワイド）オッズの下限・上限（IDEA-039）  # 締切時 2連単・2連複オッズ（IDEA-013）
+    "oddsk": (ODDSK_COLS, parse_oddsk),
+    "stab": (STAB_COLS, parse_stab),                     # 直前情報ページの見出しの「安定板使用」と距離（IDEA-043）                  # 締切時 拡連複（ワイド）オッズの下限・上限（IDEA-039）  # 締切時 2連単・2連複オッズ（IDEA-013）
     "bc_oriten": (BC_ORI_COLS, parse_bc_oriten),        # BOATCAST オリジナル展示（一周・まわり足・直線。IDEA-015）
     "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3),       # BOATCAST 3連単の確定票数（売上・自分の賭けの影響）
     "bc_votes1": (BC_VOTE1_COLS, parse_bc_hyousu1),     # BOATCAST 単勝・複勝の確定票数（IDEA-022：単勝の売上と自分の賭けの影響）
@@ -45,6 +46,8 @@ def page_url(page, date, jcd, rno):
         return f"{BC}/{jcd}/bc_kakutei_hyousu1_{date}_{jcd}_{int(rno):02d}.txt"
     if page == "bc_votes2":
         return f"{BC}/{jcd}/bc_kakutei_hyousu2_{date}_{jcd}_{int(rno):02d}.txt"
+    if page == "stab":
+        return f"{BASE}beforeinfo?rno={rno}&jcd={jcd}&hd={date}"
     return f"{BASE}{page}?rno={rno}&jcd={jcd}&hd={date}"
 
 class Pacer:
