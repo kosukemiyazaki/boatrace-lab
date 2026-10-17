@@ -23,8 +23,8 @@ import argparse, csv, datetime as dt, glob, gzip, os, subprocess, sys, tempfile,
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE2_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSTF_COLS, RESULT_COLS, parse_b,
-                           parse_bc_hyousu1, parse_bc_hyousu2, parse_bc_hyousu3, parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddstf,
+from boatlib.parse import (BC_ORI_COLS, BC_VOTE1_COLS, BC_VOTE2_COLS, BC_VOTE_COLS, BI_COLS, COMBOS, COMBOS_2F, COMBOS_2T, COMBOS_3F, ODDSK_COLS, ODDSTF_COLS, RESULT_COLS, parse_b,
+                           parse_bc_hyousu1, parse_bc_hyousu2, parse_bc_hyousu3, parse_bc_oriten, parse_beforeinfo, parse_odds2tf, parse_odds3f, parse_odds3t, parse_oddsk, parse_oddstf,
                            parse_raceresult)
 
 JST = dt.timezone(dt.timedelta(hours=9))
@@ -33,7 +33,8 @@ BASE = "https://www.boatrace.jp/owpc/pc/race/"
 PAGES = {"odds3t": (COMBOS, parse_odds3t), "oddstf": (ODDSTF_COLS, parse_oddstf), "beforeinfo": (BI_COLS, parse_beforeinfo),
          "odds3f": (COMBOS_3F, parse_odds3f), "odds2tf": (COMBOS_2T + COMBOS_2F, parse_odds2tf),
          "bc_oriten": (BC_ORI_COLS, parse_bc_oriten), "bc_votes": (BC_VOTE_COLS, parse_bc_hyousu3),
-         "bc_votes1": (BC_VOTE1_COLS, parse_bc_hyousu1), "bc_votes2": (BC_VOTE2_COLS, parse_bc_hyousu2)}
+         "bc_votes1": (BC_VOTE1_COLS, parse_bc_hyousu1), "bc_votes2": (BC_VOTE2_COLS, parse_bc_hyousu2),
+         "oddsk": (ODDSK_COLS, parse_oddsk)}  # 拡連複（ワイド）オッズの下限・上限（IDEA-039 段階2、2026-10-17 追加）
 BC = "https://race.boatcast.jp"
 
 def page_url(p, date, jcd, rno):
@@ -51,10 +52,10 @@ HEAD = ["date", "jcd", "rno", "deadline", "fetched_at"]
 # (名前, 保存先ディレクトリ, 窓の開始[分前], 窓の終了[分前], 取得ページ)
 LEADS = [("t15", "live_t15", 15, 11, ("odds3t", "oddstf")),
          ("t10", "live_t10", 10, 7, ("odds3t", "oddstf")),
-         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo", "bc_oriten")),
-         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "bc_votes1", "bc_votes2", "bc_votes", "odds3f", "odds2tf")),
+         ("t6", "live", 6, 1, ("odds3t", "oddstf", "beforeinfo", "bc_oriten", "oddsk")),
+         ("t1", "live_t1", 2, 0.5, ("odds3t", "oddstf", "oddsk", "bc_votes1", "bc_votes2", "bc_votes", "odds3f", "odds2tf")),
          # 締切の約45〜6秒前：自動投票で最後に買う場合の判断材料（単勝・複勝オッズと単勝・複勝の票数だけ。速く取れるもの）
-         ("t0", "live_t0", 0.75, 0.1, ("bc_votes1", "bc_votes2", "oddstf", "bc_votes")),
+         ("t0", "live_t0", 0.75, 0.1, ("bc_votes1", "bc_votes2", "oddstf", "oddsk", "bc_votes")),
          # 締切の約18〜3秒前：票数だけ（締切直前にどれだけお金が見えるかを測る。2026-10-12 追加）
          ("t00", "live_t00", 0.3, 0.05, ("bc_votes", "bc_votes2", "bc_votes1"))]
 
