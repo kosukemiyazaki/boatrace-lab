@@ -1,0 +1,32 @@
+name: collect-tide
+# 気象庁の潮位表（天文潮の推算値、毎時）を観測地点×年で取り込み、data-hist ブランチの tide/YYYY/STN.txt に置く（IDEA-068）。
+# 出典：気象庁ホームページ（潮位表）。取得は2秒以上の間隔をあける。
+on:
+  workflow_dispatch:
+    inputs:
+      years: { description: "YYYY を空白区切り", required: true }
+      stations: { description: "観測地点の記号を空白区切り", required: true }
+permissions:
+  contents: write
+concurrency: { group: "collect-tide", cancel-in-progress: false }
+jobs:
+  tide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data-hist, path: store }
+      - env:
+          YEARS: ${{ inputs.years }}
+          STNS: ${{ inputs.stations }}
+        run: |
+          for y in $YEARS; do for s in $STNS; do
+            f="store/tide/$y/$s.txt"; [ -s "$f" ] && continue
+            mkdir -p "store/tide/$y"
+            if curl -sSf -L --max-time 60 -A "Mozilla/5.0 (boatrace-lab research)" -o "$f.tmp" "https://www.data.jma.go.jp/kaiyou/data/db/tide/suisan/txt/$y/$s.txt"; then mv "$f.tmp" "$f"; echo "ok $y $s $(wc -c < $f)"; else rm -f "$f.tmp"; echo "miss $y $s"; fi
+            sleep 2
+          done; done
+      - name: push
+        env: { BRANCH: data-hist }
+        run: bash scripts/push_store.sh "tide ${{ inputs.years }}"
