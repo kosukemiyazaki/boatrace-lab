@@ -86,10 +86,9 @@ def boot(days, st, rt):
     bi = RNG.integers(0, len(g), size=(4000, len(g))); b = g["rt"].values[bi].sum(1) / g["st"].values[bi].sum(1)
     return float(g["rt"].sum() / g["st"].sum()), float(np.quantile(b, .025)), float(np.quantile(b, .975))
 
-def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("store"); ap.add_argument("--out", default="results/idea046.md")
-    a = ap.parse_args()
-    m, O, P, v, y = market(a.datadir)
+def build(datadir, store):
+    """特徴量を作ってモデルを学習し、全レースの予測を返す（IDEA-047 からも使う）"""
+    m, O, P, v, y = market(datadir)
     keep = ((m["date"] >= TR[0]) & (m["date"] <= EV[1])).values
     # その日・その場の前のレースまでの荒れ具合（全期間で計算してから絞る）
     res = (m["manshu"] - m["exp_m"]).values
@@ -100,7 +99,7 @@ def main():
     m, O, P, v, y = m[keep].reset_index(drop=True), O[keep], P[keep], v[keep], y[keep]
     n = len(m); print("races", n, flush=True)
     # 出走表・選手
-    e = norm(pd.read_parquet(f"{a.datadir}/entries.parquet"))
+    e = norm(pd.read_parquet(f"{datadir}/entries.parquet"))
     e = e[e["date"] >= "20230701"]
     rec = player_recent(e); met = meet_so_far(e)
     fs = fl_status(e, "F"); ls_ = fl_status(e, "L")
@@ -119,7 +118,7 @@ def main():
     X["exh_rank1"] = (ex < ex[:, [0]]).sum(1).astype(float); X.loc[~np.isfinite(ex[:, 0]), "exh_rank1"] = np.nan
     X["exh_spread"] = np.nanmax(ex, 1) - np.nanmin(ex, 1)
     # 直前情報（2025-10 以降）
-    b = norm(pd.read_parquet(f"{a.datadir}/beforeinfo.parquet", columns=KEY + [f"ex_st{i}" for i in range(1, 7)] + [f"ex_course{i}" for i in range(1, 7)]))
+    b = norm(pd.read_parquet(f"{datadir}/beforeinfo.parquet", columns=KEY + [f"ex_st{i}" for i in range(1, 7)] + [f"ex_course{i}" for i in range(1, 7)]))
     b = b.drop_duplicates(KEY, keep="last")
     X = X.merge(b, on=KEY, how="left")
     exc = X[[f"ex_course{i}" for i in range(1, 7)]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
@@ -135,7 +134,7 @@ def main():
     X["wind"] = pd.to_numeric(m["wind"], errors="coerce"); X["wave"] = pd.to_numeric(m["wave"], errors="coerce")
     X["wind_dir"] = m["wind_dir"].map({"無風": 0, "北": 1, "北東": 2, "東": 3, "南東": 4, "南": 5, "南西": 6, "西": 7, "北西": 8})
     X["dist"] = pd.to_numeric(m["dist"], errors="coerce")
-    gr, lad = grades(m, a.store); X["grade"] = gr; X["ladies"] = lad
+    gr, lad = grades(m, store); X["grade"] = gr; X["ladies"] = lad
     X["day_res"] = m["day_res"]; X["day_man"] = m["day_man"]; X["day_n"] = m["day_n"]
     first = np.array([int(c[0]) for c in COMBOS])
     X["p1"] = P[:, first == 1].sum(1); X["fav"] = P.max(1)
@@ -150,6 +149,12 @@ def main():
     mdl = lgb.train(dict(objective="regression", learning_rate=0.03, num_leaves=31, min_data_in_leaf=300, feature_fraction=0.8,
                          bagging_fraction=0.8, bagging_freq=1, lambda_l2=10.0, verbose=-1, seed=0), ds, num_boost_round=400)
     pred = mdl.predict(F)
+    return m, O, P, v, y, pred, mdl, feats, target, days, tr, ev, n
+
+def main():
+    ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("store"); ap.add_argument("--out", default="results/idea046.md")
+    a = ap.parse_args()
+    m, O, P, v, y, pred, mdl, feats, target, days, tr, ev, n = build(a.datadir, a.store)
     # 買い方：100倍以上を市場の確率の高い順に10点
     hit = np.zeros_like(v); hit[np.arange(n), y] = True; big = v & (O >= 100)
     order = np.argsort(-np.where(big, P, -1), 1)
