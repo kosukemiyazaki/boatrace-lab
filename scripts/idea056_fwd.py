@@ -35,6 +35,8 @@ def main():
     m = norm(o3)[KEY + COMBOS].merge(boat_feats(e), on=KEY, how="inner").reset_index(drop=True)
     O = m[COMBOS].apply(pd.to_numeric, errors="coerce").to_numpy(float); v = np.isfinite(O) & (O > 0)
     m = m[v.sum(1) >= 40].reset_index(drop=True); O = O[v.sum(1) >= 40]; v = v[v.sum(1) >= 40]
+    if not len(m):
+        print("集計中（0／300レース）：締切2分前のオッズと出走表がそろうレースがまだない"); return
     Pm = np.where(v, 1 / np.where(v, O, 1), 0); Pm /= Pm.sum(1, keepdims=True); p1 = Pm[:, FIRST == 1].sum(1); m["p1"] = p1
     S = segments(m, None, True, a.store)
     # 節の日目は、開始日より前の開催日も数えるため出走表の全日付から出し直す
