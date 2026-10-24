@@ -1,0 +1,27 @@
+name: program
+# 当日と翌日の番組表(B)を取得して data ブランチの program/ に置く（IDEA-075：当日の候補一覧と、ライブ予想の F 持ちの自動入力用）。
+# 公開の時刻を確かめるため、前日の夕方〜当日の朝に何度か試す（既に取れた日はスキップ）。取得の記録は program/fetch_log.csv。
+on:
+  schedule:
+    - cron: "17 9,12 * * *"    # 18:17・21:17 JST（翌日分が前日に出ているか）
+    - cron: "43 19,21,23 * * *" # 04:43・06:43・08:43 JST
+  workflow_dispatch:
+    inputs:
+      dates: { description: "YYYY-MM-DD を空白区切り（空なら今日と明日）", default: "" }
+permissions:
+  contents: write
+concurrency: { group: program, cancel-in-progress: false }
+jobs:
+  program:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: data, path: store }
+      - run: sudo apt-get install -y -qq --no-install-recommends lhasa || (sudo apt-get update -qq && sudo apt-get install -y -qq lhasa)
+      - env:
+          DATES: ${{ inputs.dates }}
+        run: python3 scripts/fetch_program.py store $DATES
+      - name: push
+        run: bash scripts/push_store.sh "program $(TZ=Asia/Tokyo date +%F_%H%M)"
