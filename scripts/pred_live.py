@@ -3,7 +3,7 @@ usage: python scripts/pred_live.py JCD RNO [--date YYYYMMDD] [--f 1,3,5] [--src 
 - オッズ：data ブランチの live_t15・live_t10・live（6分前）・live_t1 の3連単のうち一番新しいもの。既定では origin/data から当日分を SRC に取り直す
 - 計算（変えていない）：市場の確率 → 本命・穴の補正（β=1.055）→ F 持ちの補正（IDEA-036 の係数）→ 展開の補正（IDEA-035 の c2・c3、models/idea035_c35.npz）
 - F 持ち：番組表の当日の出走選手について、審査期間の開始から前日までに F があった艇（IDEA-036 の定義）。--f を渡すとそちらを使う（画面の表示と違うとき）
-- IDEA-075：(a)(c) は番組表、(b) は判定に使ったオッズの時点の市場の1号艇の確率、(d) は直前情報の風向き（場ごとの対応表による推定）
+- IDEA-075：(a)(c) は番組表、(b) は判定に使ったオッズの時点の市場の1号艇の確率、(d) は直前情報の風向き（場ごとの回転の対応表で8方位に直す。前向きの判定と同じ）
 - 買い目は補正後の確率の高い順に選ぶ（IDEA-074：締切前の期待値で組を外さない）。自動で投票はしない
 """
 import argparse, glob, os, subprocess, sys, tempfile, warnings
@@ -100,7 +100,7 @@ def main():
         wd = wind_from_code(Z, jcd, bi["wind_dir"]) if bi is not None else None
         fav = fav_dirs(Z, jcd)
         cond = {"(a) 22歳以下": bool(info["a"]), "(b) 補正後÷市場≥1.15": r >= 1.15, "(c) 逃げ上手": bool(info["c"]),
-                "(d) 有利な風（推定）": (wd in fav) if wd else False}
+                "(d) 有利な風（直前情報）": (wd in fav) if wd else False}
         n = sum(cond.values())
         print(f"--- IDEA-075（1号艇の単勝・複勝の条件）：{n}つ成立 → {'対象' if n >= 2 else '対象外'}")
         print("   " + "　".join(f"{k}:{'○' if x else '×'}" for k, x in cond.items()))
