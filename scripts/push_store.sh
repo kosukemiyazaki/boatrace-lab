@@ -7,7 +7,7 @@ git add -A
 git diff --cached --quiet && { echo "no changes"; exit 0; }
 git commit -qm "$1"
 for i in 1 2 3 4 5 6 7 8; do
-  git pull -q --rebase origin "${BRANCH:-data}" && git push -q origin "HEAD:${BRANCH:-data}" && exit 0
+  git pull -q --rebase --autostash origin "${BRANCH:-data}" && git push -q origin "HEAD:${BRANCH:-data}" && exit 0
   sleep $((RANDOM % 20 + 5))
 done
 exit 1

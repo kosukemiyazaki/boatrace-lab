@@ -57,11 +57,22 @@ jobs:
         # 締切前の予想の準備（ライブラリ・データセット）。取得は待たずに始め、準備ができてから予想を始める
         run: |
           nohup bash -c "pip install -q pandas pyarrow numpy scipy scikit-learn lightgbm && python3 scripts/build_dataset.py store ds --no-odds && touch ds/READY" > prep.log 2>&1 &
+      - name: next-day program in background (from 17:15 JST)
+        if: steps.u.outputs.mode == 'run'
+        # 翌日の番組表は前日の17時ごろに公開される。program.yml の定期起動は数時間遅れて日付が変わってから動くことが多いので、
+        # 毎日動いている live のジョブの中で17:15以降に20分おきに取りに行く（取れたら終わり）。保存した分は live の2分ごとの push に乗る
+        run: |
+          nohup bash -c 'while true; do
+            Y=$(TZ=Asia/Tokyo date -d tomorrow +%Y); B=$(TZ=Asia/Tokyo date -d tomorrow +%y%m%d)
+            [ -f "store/program/$Y/b$B.txt.gz" ] && { echo "have b$B"; break; }
+            [ "$(TZ=Asia/Tokyo date +%H%M)" -ge 1715 ] && python3 scripts/fetch_program.py store "$(TZ=Asia/Tokyo date -d tomorrow +%F)"
+            sleep 1200
+          done' > program.log 2>&1 &
       - if: steps.u.outputs.mode == 'run'
         run: python3 scripts/live_snapshot.py store --until ${{ steps.u.outputs.until }} --model models/frozen_v4 --datadir ds
       - name: prep log
         if: always() && steps.u.outputs.mode == 'run'
-        run: tail -20 prep.log || true
+        run: tail -20 prep.log || true; tail -5 program.log || true
       - name: push
         if: always() && steps.u.outputs.mode == 'run'
         run: bash scripts/push_store.sh "live $(TZ=Asia/Tokyo date +%Y%m%d) final"
@@ -76,7 +87,13 @@ jobs:
           hh, mm = map(int, "${{ steps.u.outputs.until }}".split(":"))
           s = (n.replace(hour=hh, minute=mm, second=0) - n).total_seconds()
           if s > 60:
-              print("all races done; wait", int(s), "s"); time.sleep(s)
+              # 待つ間も、裏で取った翌日の番組表を10分おきに push する
+              import subprocess
+              print("all races done; wait", int(s), "s")
+              end = time.time() + s
+              while time.time() < end:
+                  time.sleep(min(600, max(0, end - time.time())))
+                  subprocess.run(["bash", "scripts/push_store.sh", "program (live)"], check=False)
       - name: sleep until morning
         if: steps.u.outputs.mode == 'sleep'
         run: sleep ${{ steps.u.outputs.sleep }}
