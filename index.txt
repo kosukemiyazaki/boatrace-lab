@@ -1,0 +1,6 @@
+f1.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan1410.lzh 179311
+f2.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan1710.lzh 179357
+f3.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan2010.lzh 178675
+f4.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan2310.lzh 180777
+f5.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan2510.lzh 181761
+f6.html https://www.boatrace.jp/static_extra/pc_static/download/data/kibetsu/fan2604.lzh 183497
