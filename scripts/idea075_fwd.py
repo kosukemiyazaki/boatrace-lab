@@ -47,7 +47,9 @@ def posterior_gt1(roi, se):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("store"); ap.add_argument("--start", default="20261025")
-    ap.add_argument("--out", default="results/idea075.md"); a = ap.parse_args()
+    ap.add_argument("--out", default="results/idea075.md")
+    ap.add_argument("--order", choices=["deadline", "key"], default="deadline", help="途中確認で数える順番：日付→締切時刻（既定）か、日付→場→R")
+    a = ap.parse_args()
     W, Z = load_fixed()
     kp = k_pay(a.store, a.start); kp = kp[kp["kind"].isin(["tan", "fuku"])]
     haveK = kp[kp["kind"] == "tan"][KEY].drop_duplicates()
@@ -104,7 +106,10 @@ def main():
             out.append({"区分": label, "買い方": name, "点数": n, "日数": int(pd.Series(d[msk]).nunique()), "的中": int(((pay[msk] > 0) & ~ref[msk]).sum()),
                         "回収率": roi, "95%CI下": lo, "95%CI上": hi, "片側80%上限": up80, "100%超の確率（事前95%）": posterior_gt1(roi, se)})
         return pd.DataFrame(out)
-    T = R[R["n"] >= 2].sort_values(KEY).reset_index(drop=True) if len(R) else R
+    dl = eall[eall["boat"] == 1][KEY + ["deadline"]].drop_duplicates(KEY)
+    R = R.merge(dl, on=KEY, how="left") if len(R) else R.assign(deadline=None)
+    order = ["date", "deadline", "jcd", "rno"] if a.order == "deadline" else KEY
+    T = R[R["n"] >= 2].sort_values(order).reset_index(drop=True) if len(R) else R
     n1 = int(len(T)); last = T["date"].max() if n1 else ""
     looks, stopped = [], None
     for k in range(LOOK, min(n1, NMAX) + 1, LOOK):
@@ -130,7 +135,11 @@ def main():
           pd.concat([S1, S2]).to_markdown(index=False, floatfmt=".3f"), "",
           f"対象にしたレース：{n1}（締切2分前のオッズと K がそろうレース {len(R)} のうち）", ""]
     if looks:
-        md += ["## 途中確認", ""] + [f"- {k}レース時点：{'打ち切りの基準に当たる' if fut else '続ける'}" for k, _, fut in looks] + [""]
+        md += ["## 途中確認（数える順番：" + ("日付→締切時刻" if a.order == "deadline" else "日付→場→R") + "）", ""]
+        for k, S, fut in looks:
+            lastk = T.iloc[k - 1]
+            md += [f"### {k}レース時点（{k}番目は {lastk['date']} {lastk['jcd']} {int(lastk['rno'])}R）：{'打ち切りの基準に当たる' if fut else '続ける'}", "",
+                   S.to_markdown(index=False, floatfmt=".3f"), ""]
     if n1:
         V = T.sort_values(KEY, ascending=False).head(60)
         t, f, _ = pays(V); V = V.assign(単勝1=t, 複勝1=f)
