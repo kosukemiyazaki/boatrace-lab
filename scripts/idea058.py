@@ -143,7 +143,7 @@ def main():
     wmap = {(r.date, r.jcd, r.rno, r.pair): r.pay for r in wp.itertuples()}
     done_t = set(map(tuple, tanp[KEY].values)); done_w = set(map(tuple, wp[KEY].values))
     keys = list(map(tuple, m[KEY].values)); idx = {k: i for i, k in enumerate(keys)}
-    rows3 = []
+    rows3 = []; fuku_pts = []
     for nm, odf, cols, prob, pmap, done in (
             ("単勝", tf0, [f"tan{b}" for b in range(1, 7)], pw, tmap, done_t),
             ("複勝（下限）", tf0, [f"fuku_lo{b}" for b in range(1, 7)], p2, fmap, done_t),
@@ -161,6 +161,8 @@ def main():
                 for j, lab in enumerate(labels):
                     if np.isfinite(od[j]) and od[j] > 0 and prob[i, j] * od[j] > thr:
                         pay = pmap.get((k[0], k[1], k[2], lab), 0); st.append(100); rt.append(pay); dd.append(k[0])
+                        if nm == "複勝（下限）" and thr == 1.1:
+                            fuku_pts.append((k[0], k[1], k[2], lab, pay))
                         if pay > 0:
                             ratio_l.append(pay / 100 / od[j])
             roi, lo, hi = boot(np.array(dd), np.array(st, float), np.array(rt, float))
@@ -170,6 +172,14 @@ def main():
     out += ["## (3) t0（45〜6秒前）で見えたずれは確定まで残るか", "",
             "t0 の3連単の票から出した確率（^1.06）× t0 のオッズ（複勝・拡連複は下限）> 閾値 の組を各100円、払戻は K の実額。", "",
             R3.to_markdown(index=False, floatfmt=".3f") if len(R3) else "（t0 のオッズなし）", ""]
+    # 複勝の最終判定は日付順（日付→場→R→艇）で最初の2,000点
+    if len(fuku_pts) >= 2000:
+        F = pd.DataFrame(fuku_pts, columns=["date", "jcd", "rno", "boat", "pay"]).sort_values(["date", "jcd", "rno", "boat"]).head(2000)
+        roi, lo, hi = boot(F["date"].values, np.full(len(F), 100.0), F["pay"].values.astype(float))
+        out += ["## (3) 複勝（t0・閾値1.1）の最終判定：日付順で最初の2,000点", "",
+                f"- 期間 {F['date'].min()}〜{F['date'].max()}（2,000点目は {F['date'].iloc[-1]} {F['jcd'].iloc[-1]} {int(F['rno'].iloc[-1])}R {F['boat'].iloc[-1]}号艇）",
+                f"- 的中 {int((F['pay'] > 0).sum())}、回収率 {roi:.3f}（日単位95%CI {lo:.3f}〜{hi:.3f}）",
+                f"- 判定：{'採用候補' if (roi >= 1.1 and lo > 1.0) else '不採用'}（基準：回収率110%以上かつ95%CI下限 > 100%）", ""]
     # (4) 追随
     s0 = V0 / T0[:, None]; surge = np.where((s0 >= 0.005) & (V1 > 0), V0 / np.where(V1 > 0, V1, 1), 0)
     order = np.argsort(-surge, 1)
