@@ -1531,4 +1531,5 @@
 - 番組表 b261117（11場）：直した後の初日。live のジョブが 17:15 に partial3 で取り、その後 20分おきに取り直して 19:21 partial2 → 20:42 partial1 → 21:02 ok で全場そろった（--check 0）。dispatch は不要だった。
 - ダッシュボード：軽量版 v67（14日分）、PC版は combos.json（直近10日・7.2MB）を asset f7c3bbf4a4f5bccdd4d90cc50ec4e0f8 で上げ直して datasets/combos を version 67 に、古い asset 19db6a01… は削除。
 - PC の auto_live_summary：届いていない（10-13 以降、更新なし）。
+- 11-17 朝チェックを予約：trig_01WbLL8oK9tEvrhgvk8ruZq1（2026-11-17T01:30:00Z）。
 - 利用者の 11-16 の購入：会話での申告なし。
