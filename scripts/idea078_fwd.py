@@ -153,7 +153,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("datadir"); ap.add_argument("store")
     ap.add_argument("--start", default="20261117"); ap.add_argument("--end", default=END)
     ap.add_argument("--label", default="前向き"); ap.add_argument("--out", default="results/idea078.md")
-    ap.add_argument("--explore", action="store_true", help="探索期間（2026-10-11〜11-15）の参考も同じファイルに載せる")
+    ap.add_argument("--no-explore", dest="explore", action="store_false", help="探索期間（2026-10-11〜11-15）の参考を載せない（既定は載せる。毎朝の指示は引数なしで呼ぶ）")
     a = ap.parse_args()
     res = load(a.datadir, a.store, a.start, a.end)
     m, rb = (res[0], res[1]) if res else (None, None)
