@@ -60,11 +60,11 @@ jobs:
       - name: next-day program in background (from 17:15 JST)
         if: steps.u.outputs.mode == 'run'
         # 翌日の番組表は前日の17時ごろに公開される。program.yml の定期起動は数時間遅れて日付が変わってから動くことが多いので、
-        # 毎日動いている live のジョブの中で17:15以降に20分おきに取りに行く（取れたら終わり）。保存した分は live の2分ごとの push に乗る
+        # 毎日動いている live のジョブの中で17:15以降に20分おきに取りに行く（全場そろったら終わり。ナイターの場は17時台はまだ出ていないので取り直す）。保存した分は live の2分ごとの push に乗る
         run: |
           nohup bash -c 'while true; do
             Y=$(TZ=Asia/Tokyo date -d tomorrow +%Y); B=$(TZ=Asia/Tokyo date -d tomorrow +%y%m%d)
-            [ -f "store/program/$Y/b$B.txt.gz" ] && { echo "have b$B"; break; }
+            [ "$(python3 scripts/fetch_program.py --check "store/program/$Y/b$B.txt.gz")" = 0 ] && { echo "have b$B (all venues)"; break; }
             [ "$(TZ=Asia/Tokyo date +%H%M)" -ge 1715 ] && python3 scripts/fetch_program.py store "$(TZ=Asia/Tokyo date -d tomorrow +%F)"
             sleep 1200
           done' > program.log 2>&1 &
