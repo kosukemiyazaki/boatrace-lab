@@ -1681,3 +1681,4 @@
 - ダッシュボード：軽量版 v77（14日分）。PC版は新しい asset fa08bf834bbcffd42d9b2146f6f8f4b5（直近10日・7.3MB）を上げ datasets/combos を version 77 に、古い asset ba4c89b4ff75336a4105186b61929bea は削除。
 - PC の auto_live_summary：届いていない（最後の更新は 10-22 のコミット）。
 - 利用者の 11-21 の購入：会話での申告なし（「なし」）。
+- 予約：11-22 朝チェック trig_015xByoHndhWeUWq2RCpHp1H（2026-11-22T01:30:00Z。daily の予備起動の初日として、どの回で起動したかを報告する）。
