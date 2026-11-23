@@ -1734,3 +1734,4 @@
 - 番組表 b261124：--check 0（15場）。fetch_log は 17:16 partial5 → 19:41 partial4 → 21:02 ok。
 - ダッシュボード：軽量版 v81、PC版は新しい asset ee6991f1fb12d699790f099e4e50067d（datasets/combos version 81）、古い 007596a7… は削除。
 - PC の auto_live_summary：届いていない（最後は 10-22 のコミット）。11-23 の購入：会話での申告なし（「なし」）。live.yml は利用者の返事待ちで変えていない。
+- 予約：11-24 朝チェック trig_015CnsMUtcEo7bPdQS3HG92C（2026-11-24T01:30:00Z）。
