@@ -1759,3 +1759,4 @@
 - 番組表 b261125：--check 0（13場そろい）。fetch_log：06:29・13:27 miss → 17:15 partial5 → 19:40 partial4 → 20:01 partial3 → 21:01 partial1 → 21:21 ok。
 - ダッシュボード：軽量版 v83（14日分）。PC版は combos.json（直近10日・7.4MB）を asset a2d2970447524b8f23cf487e7af40d8f で上げ直し、datasets/combos を version 83 に、古い asset 091869713cb6bebf1df7bcd680f13cde は削除。
 - PC の auto_live_summary は届いていない（最後の更新は 10-22 のコミット）。利用者の 11-24 の購入は会話での申告なし（「なし」）。live.yml は利用者の返事待ちで変えていない。
+- 予約：11-25 朝チェック trig_01Easp4XEh3ufncMdcNbAVmp（2026-11-25T01:30:00Z。IDEA-075 の200レース・IDEA-078 の500レースの途中確認、丸亀・大村・津1R の K 確認を含む）。
