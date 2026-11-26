@@ -1806,3 +1806,4 @@
 - 番組表 b261127：--check 0（全14場）。fetch_log：17:15 partial5 → 18:36 partial4 → 19:20 partial2 → 21:01 ok。
 - ダッシュボード：軽量版 v87（14日分）。PC版は combos.json（直近10日・7.5MB）を asset 09db67eef51ac3be440b7c60b8e29035 で上げ直し、datasets/combos を version 87 に、古い asset 1a2766aa99ce13fcce0285e47eb4ba0f は削除。
 - PC の auto_live_summary は届いていない（最後の更新は 10-22 のコミット）。11-26 の購入は会話での申告なし（「なし」）。
+- 予約：11-27 朝チェック trig_01GoKgoQZ3JHh4uSuPcN4xkv（2026-11-27T01:30:00Z）。利用者の返事が来るまでは今の形で続ける。
