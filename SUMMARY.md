@@ -1848,3 +1848,4 @@
 - 番組表 b261129：--check 0（16場・192レース）。fetch_log：04:02・11:12 miss → 17:16 partial4 → 17:36 partial3 → 17:56〜18:36 pending3 → 18:56 partial2 → 19:00〜20:41 pending2 → 21:01 ok。
 - ダッシュボード：軽量版 v91（14日分）。PC版は combos.json（直近10日・7.9MB）を asset 034f18d5514a3a1dbeb867e5e98c2e73 で上げ直し、datasets/combos を version 91 に、古い asset d51827466ee026079b74fab2c36544f3 は削除。11-28 分は結果が明朝の dataset で入る。
 - PC の auto_live_summary は届いていない（最後の更新は 10-22 のコミット）。11-28 の購入は会話での申告なし（「なし」）。
+- 予約：11-29 朝チェック trig_01UkNNkLwuxkjryfEFjRGaoq（2026-11-29T01:30:00Z）。利用者の返事が来るまでは今の形で続ける。
